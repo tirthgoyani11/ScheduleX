@@ -23,7 +23,7 @@ import { useTimeSlots } from "@/hooks/useTimeSlots";
 import type { TimeSlot } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 
-const emptyForm = { label: "", start_time: "09:00", end_time: "10:00", slot_type: "lecture" as string, slot_order: 1 };
+const emptyForm = { label: "", start_time: "09:00", end_time: "10:00", slot_type: "lecture" as "lecture" | "lab" | "break", slot_order: 1 };
 
 export default function TimeSlotsPage() {
   const { data: slots, isLoading, createSlot, updateSlot, deleteSlot, reorderSlots, seedDefaults } = useTimeSlots();
@@ -180,7 +180,7 @@ export default function TimeSlotsPage() {
             </div>
             <div className="grid gap-2">
               <Label>Type</Label>
-              <Select value={form.slot_type} onValueChange={(v) => setForm({ ...form, slot_type: v })}>
+              <Select value={form.slot_type} onValueChange={(v: string) => setForm({ ...form, slot_type: v as "lecture" | "lab" | "break" })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

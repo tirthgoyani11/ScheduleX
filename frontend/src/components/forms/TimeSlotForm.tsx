@@ -4,20 +4,20 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { SlotType, TimeSlot } from "@/types";
+import type { TimeSlot } from "@/types";
 
 const timeSlotSchema = z.object({
   label: z.string().min(1, "Label is required"),
-  startTime: z.string().min(1, "Start time is required"),
-  endTime: z.string().min(1, "End time is required"),
-  type: z.enum(["LECTURE", "LAB"]),
+  start_time: z.string().min(1, "Start time is required"),
+  end_time: z.string().min(1, "End time is required"),
+  slot_type: z.enum(["lecture", "lab", "break"]),
 });
 
 type TimeSlotFormData = z.infer<typeof timeSlotSchema>;
 
 interface TimeSlotFormProps {
   initialData?: TimeSlot;
-  onSubmit: (data: Omit<TimeSlot, "id">) => Promise<void>;
+  onSubmit: (data: Omit<TimeSlot, "slot_id" | "college_id">) => Promise<void>;
   onCancel?: () => void;
   isLoading?: boolean;
 }
@@ -33,30 +33,29 @@ export function TimeSlotForm({ initialData, onSubmit, onCancel, isLoading }: Tim
     resolver: zodResolver(timeSlotSchema),
     defaultValues: {
       label: initialData?.label || "",
-      startTime: initialData?.startTime || "09:00",
-      endTime: initialData?.endTime || "10:00",
-      type: initialData?.type || "LECTURE",
+      start_time: initialData?.start_time || "09:00",
+      end_time: initialData?.end_time || "10:00",
+      slot_type: initialData?.slot_type || "lecture",
     },
   });
 
-  const selectedType = watch("type");
-  const startTime = watch("startTime");
-  const endTime = watch("endTime");
+  const selectedType = watch("slot_type");
+  const start_time = watch("start_time");
+  const end_time = watch("end_time");
 
   const getDuration = (): number => {
-    const [sh, sm] = startTime.split(":").map(Number);
-    const [eh, em] = endTime.split(":").map(Number);
+    const [sh, sm] = start_time.split(":").map(Number);
+    const [eh, em] = end_time.split(":").map(Number);
     return (eh - sh) * 60 + (em - sm);
   };
 
   const handleFormSubmit = (data: TimeSlotFormData) => {
     onSubmit({
       label: data.label,
-      startTime: data.startTime,
-      endTime: data.endTime,
-      type: data.type as SlotType,
-      durationMinutes: getDuration(),
-      order: initialData?.order || 0,
+      start_time: data.start_time,
+      end_time: data.end_time,
+      slot_type: data.slot_type,
+      slot_order: initialData?.slot_order || 0,
     });
   };
 
@@ -70,29 +69,29 @@ export function TimeSlotForm({ initialData, onSubmit, onCancel, isLoading }: Tim
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Start Time</Label>
-          <Input type="time" className="rounded-xl" {...register("startTime")} />
+          <Input type="time" className="rounded-xl" {...register("start_time")} />
         </div>
         <div className="space-y-2">
           <Label>End Time</Label>
-          <Input type="time" className="rounded-xl" {...register("endTime")} />
+          <Input type="time" className="rounded-xl" {...register("end_time")} />
         </div>
       </div>
-      {startTime && endTime && (
+      {start_time && end_time && (
         <p className="text-xs text-muted-foreground">{getDuration()} minutes</p>
       )}
       <div className="space-y-2">
         <Label>Type</Label>
-        <div className="grid grid-cols-2 gap-3">
-          {(["LECTURE", "LAB"] as const).map((t) => (
+        <div className="grid grid-cols-3 gap-3">
+          {(["lecture", "lab", "break"] as const).map((t) => (
             <button
               key={t}
               type="button"
-              onClick={() => setValue("type", t)}
+              onClick={() => setValue("slot_type", t)}
               className={`p-3 rounded-xl border-2 text-sm font-medium transition-all ${
                 selectedType === t ? "border-primary bg-accent" : "border-border hover:border-border-strong"
               }`}
             >
-              {t === "LECTURE" ? "📚 Lecture" : "🔬 Lab"}
+              {t === "lecture" ? "📚 Lecture" : t === "lab" ? "🔬 Lab" : "☕ Break"}
             </button>
           ))}
         </div>
