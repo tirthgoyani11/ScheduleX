@@ -12,7 +12,12 @@ from fastapi.responses import Response
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from weasyprint import HTML
+
+try:
+    from weasyprint import HTML as WeasyHTML
+    _HAS_WEASYPRINT = True
+except ImportError:
+    _HAS_WEASYPRINT = False
 
 from database import AsyncSessionLocal
 from dependencies import get_db, get_current_user
@@ -35,6 +40,16 @@ _jinja_env = Environment(
 )
 
 ALL_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+
+def _render_pdf(html_str: str) -> bytes:
+    if not _HAS_WEASYPRINT:
+        raise HTTPException(
+            501,
+            "PDF export requires WeasyPrint which is not installed. "
+            "Use the Excel export instead, or install WeasyPrint.",
+        )
+    return WeasyHTML(string=html_str).write_pdf()
 
 
 # ── Helpers ───────────────────────────────────────────────
@@ -285,7 +300,7 @@ async def export_department_pdf(
         faculty_legend=faculty_legend,
     )
 
-    pdf_bytes = HTML(string=html_str).write_pdf()
+    pdf_bytes = _render_pdf(html_str)
 
     filename = f"Timetable_Sem{tt.semester}_{tt.academic_year}.pdf"
     return Response(
@@ -406,7 +421,7 @@ async def export_faculty_pdf(
         teaching_summary=teaching_summary,
     )
 
-    pdf_bytes = HTML(string=html_str).write_pdf()
+    pdf_bytes = _render_pdf(html_str)
 
     safe_name = faculty_name.replace(" ", "_")
     filename = f"Schedule_{safe_name}.pdf"
@@ -513,7 +528,7 @@ async def export_room_pdf(
         rooms=rooms_data,
     )
 
-    pdf_bytes = HTML(string=html_str).write_pdf()
+    pdf_bytes = _render_pdf(html_str)
 
     filename = f"Room_Allocation_Sem{tt.semester}_{tt.academic_year}.pdf"
     return Response(

@@ -12,9 +12,9 @@ from config import settings
 log = logging.getLogger(__name__)
 
 # NVIDIA NIM config – override via .env
-NVIDIA_API_KEY: str = getattr(settings, "NVIDIA_API_KEY", "")
-NVIDIA_BASE_URL: str = getattr(settings, "NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-NVIDIA_MODEL: str = getattr(settings, "NVIDIA_MODEL", "moonshotai/kimi-k2.5")
+NVIDIA_API_KEY: str = settings.NVIDIA_API_KEY
+NVIDIA_BASE_URL: str = settings.NVIDIA_BASE_URL
+NVIDIA_MODEL: str = settings.NVIDIA_MODEL
 
 
 class ChatLLM:
@@ -67,14 +67,13 @@ class ChatLLM:
         # Try NVIDIA NIM first
         if self._nvidia:
             try:
-                extra = {"thinking": {"type": "enabled" if thinking else "disabled"}}
-                resp = await self._nvidia.chat.completions.create(
+                kwargs: dict = dict(
                     model=NVIDIA_MODEL,
                     messages=messages,
                     temperature=0.7 if not thinking else 0.4,
                     max_tokens=1024,
-                    extra_body=extra,
                 )
+                resp = await self._nvidia.chat.completions.create(**kwargs)
                 self.request_count += 1
                 return resp.choices[0].message.content.strip()
             except Exception as exc:
