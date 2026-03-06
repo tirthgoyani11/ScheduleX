@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Outlet, Navigate } from "react-router-dom";
 import { AppSidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
+import { ChatPanel } from "@/components/layout/ChatPanel";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Loader2 } from "lucide-react";
 
@@ -38,6 +39,7 @@ export function DashboardLayout() {
           <Outlet />
         </main>
       </div>
+      <ChatPanel />
     </div>
   );
 }
