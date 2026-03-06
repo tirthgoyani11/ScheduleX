@@ -12,6 +12,7 @@ import { useTimetableStore } from "@/store/useTimetableStore";
 import { useTimetable } from "@/hooks/useTimetable";
 import { useSubjects } from "@/hooks/useSubjects";
 import { useFaculty } from "@/hooks/useFaculty";
+import { useBatches } from "@/hooks/useBatches";
 import { api } from "@/lib/api-client";
 
 const allDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -21,8 +22,11 @@ export default function GeneratePage() {
   const { generate, isGenerating } = useTimetable();
   const { data: allSubjects } = useSubjects(store.selectedSemester);
   const { data: allFaculty } = useFaculty();
+  const { data: batches, create: createBatch, remove: removeBatch } = useBatches(store.selectedSemester);
   const navigate = useNavigate();
   const [newDivision, setNewDivision] = useState("");
+  const [newBatchName, setNewBatchName] = useState("");
+  const [newBatchSize, setNewBatchSize] = useState("15");
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [generatingText, setGeneratingText] = useState("");
   const [academicYear, setAcademicYear] = useState("2025-26");
@@ -107,11 +111,16 @@ export default function GeneratePage() {
   // Helper: get faculty name by ID
   const getFacultyName = (fid: string) => allFaculty.find((f) => f.faculty_id === fid)?.name ?? fid;
 
-  // Count load per faculty
+  // Count load per faculty (lectures + labs × num_batches)
+  const numBatches = batches.length;
   const facultyLoad: Record<string, number> = {};
   for (const [sid, fid] of Object.entries(assignments)) {
     const sub = semSubjects.find((s) => s.subject_id === sid);
-    facultyLoad[fid] = (facultyLoad[fid] || 0) + (sub?.weekly_periods ?? 0);
+    if (sub) {
+      const lh = sub.lecture_hours || sub.weekly_periods || 0;
+      const labLoad = (sub.lab_hours || 0) * (numBatches || 1);
+      facultyLoad[fid] = (facultyLoad[fid] || 0) + lh + labLoad;
+    }
   }
 
   return (
@@ -182,6 +191,28 @@ export default function GeneratePage() {
               ))}
             </div>
           </div>
+          <div className="space-y-2">
+            <Label>Lab Batches</Label>
+            <p className="text-xs text-muted-foreground">Define student batches for lab rotation scheduling</p>
+            <div className="flex flex-wrap gap-2">
+              {batches.map((b) => (
+                <span key={b.batch_id} className="chip chip-blue gap-1">
+                  Batch {b.name} ({b.size})
+                  <button onClick={() => removeBatch(b.batch_id)}><X className="h-3 w-3" /></button>
+                </span>
+              ))}
+              <div className="flex gap-1.5">
+                <Input className="rounded-xl h-7 w-14 text-xs" value={newBatchName} onChange={(e) => setNewBatchName(e.target.value)} placeholder="A" />
+                <Input className="rounded-xl h-7 w-14 text-xs" type="number" value={newBatchSize} onChange={(e) => setNewBatchSize(e.target.value)} placeholder="15" />
+                <Button variant="outline" size="sm" className="rounded-xl h-7 text-xs" onClick={() => {
+                  if (newBatchName) {
+                    createBatch({ semester: store.selectedSemester, name: newBatchName, size: parseInt(newBatchSize) || 15 });
+                    setNewBatchName("");
+                  }
+                }}>+</Button>
+              </div>
+            </div>
+          </div>
           <Button onClick={() => { setAutoAssigned(false); setAssignments({}); store.setStep(2); }} className="rounded-xl btn-press gap-2">
             Next <ArrowRight className="h-4 w-4" />
           </Button>
@@ -231,10 +262,12 @@ export default function GeneratePage() {
               return (
                 <div key={sub.subject_id} className={`bg-card rounded-lg shadow-sm p-5 space-y-3 border-l-4 ${assignedFacultyId ? "border-l-green-500" : "border-l-amber-400"}`}>
                   <div className="flex items-center gap-3">
-                    <StatusChip variant={getSubjectChipVariant(sub.needs_lab)} label={sub.needs_lab ? "LAB" : "THEORY"} />
+                    <StatusChip variant={getSubjectChipVariant(sub.needs_lab)} label={sub.lab_hours > 0 ? "L+P" : "THEORY"} />
                     <span className="font-medium">{sub.name}</span>
                     <span className="font-mono text-xs text-muted-foreground">{sub.subject_code}</span>
-                    <span className="text-xs text-muted-foreground ml-auto">{sub.weekly_periods} per/wk</span>
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      L:{sub.lecture_hours || sub.weekly_periods}{sub.lab_hours > 0 ? ` P:${sub.lab_hours}` : ""}
+                    </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-muted-foreground w-20">Faculty:</span>
@@ -279,8 +312,9 @@ export default function GeneratePage() {
             <p className="text-muted-foreground text-sm">Semester {store.selectedSemester} · Div {store.divisions.join(", ")} · {store.workingDays.length} days</p>
           </div>
           <div className="bg-muted rounded-xl p-4 text-left text-sm space-y-1">
-            <p><strong>Subjects:</strong> {semSubjects.length}</p>
+            <p><strong>Subjects:</strong> {semSubjects.length} ({semSubjects.filter(s => s.lab_hours > 0).length} with labs)</p>
             <p><strong>Faculty assigned:</strong> {Object.keys(assignments).length}/{semSubjects.length}</p>
+            <p><strong>Lab Batches:</strong> {numBatches > 0 ? batches.map(b => b.name).join(", ") : "None"}</p>
             <p><strong>Working days:</strong> {store.workingDays.map(d => d.slice(0,3)).join(", ")}</p>
           </div>
 
