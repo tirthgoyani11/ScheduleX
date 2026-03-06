@@ -36,6 +36,102 @@ function buildLookup(entries: TimetableEntry[]) {
   return map;
 }
 
+/**
+ * Detect consecutive identical lab blocks.
+ * Returns a map: slot_order → { type: "start", span, endTime } | { type: "skip" }
+ */
+function detectLabBlocks(
+  slots: TimeSlot[],
+  days: string[],
+  lookup: Map<string, TimetableEntry[]>
+) {
+  const result = new Map<string, { type: "start"; span: number; endTime: string } | { type: "skip" }>();
+  const nonBreak = slots.filter((s) => s.slot_type !== "break").sort((a, b) => a.slot_order - b.slot_order);
+
+  for (const day of days) {
+    let i = 0;
+    while (i < nonBreak.length) {
+      const curr = nonBreak[i];
+      const currBatch = (lookup.get(`${day}|${curr.slot_order}`) || []).filter((e) => e.batch);
+      if (currBatch.length === 0) { i++; continue; }
+
+      const currSig = currBatch
+        .map((e) => `${e.subject_name}|${e.batch}|${e.faculty_name}|${e.room_name}`)
+        .sort()
+        .join(",");
+
+      let span = 1;
+      while (i + span < nonBreak.length) {
+        const next = nonBreak[i + span];
+        const nextBatch = (lookup.get(`${day}|${next.slot_order}`) || []).filter((e) => e.batch);
+        const nextSig = nextBatch
+          .map((e) => `${e.subject_name}|${e.batch}|${e.faculty_name}|${e.room_name}`)
+          .sort()
+          .join(",");
+        if (nextSig === currSig) span++;
+        else break;
+      }
+
+      if (span > 1) {
+        const lastSlot = nonBreak[i + span - 1];
+        result.set(`${day}|${curr.slot_order}`, { type: "start", span, endTime: lastSlot.end_time });
+        for (let j = 1; j < span; j++) {
+          result.set(`${day}|${nonBreak[i + j].slot_order}`, { type: "skip" });
+        }
+        i += span;
+      } else {
+        i++;
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Detect consecutive identical entries for a single-entry lookup (faculty/room PDFs).
+ */
+function detectSingleBlocks(
+  slots: TimeSlot[],
+  days: string[],
+  lookup: Map<string, TimetableEntry>
+) {
+  const result = new Map<string, { type: "start"; span: number; endTime: string } | { type: "skip" }>();
+  const nonBreak = slots.filter((s) => s.slot_type !== "break").sort((a, b) => a.slot_order - b.slot_order);
+
+  for (const day of days) {
+    let i = 0;
+    while (i < nonBreak.length) {
+      const curr = nonBreak[i];
+      const currEntry = lookup.get(`${day}|${curr.slot_order}`);
+      if (!currEntry) { i++; continue; }
+
+      const currSig = `${currEntry.subject_name}|${currEntry.faculty_name}|${currEntry.room_name}|${currEntry.batch || ""}`;
+
+      let span = 1;
+      while (i + span < nonBreak.length) {
+        const next = nonBreak[i + span];
+        const nextEntry = lookup.get(`${day}|${next.slot_order}`);
+        if (!nextEntry) break;
+        const nextSig = `${nextEntry.subject_name}|${nextEntry.faculty_name}|${nextEntry.room_name}|${nextEntry.batch || ""}`;
+        if (nextSig === currSig) span++;
+        else break;
+      }
+
+      if (span > 1) {
+        const lastSlot = nonBreak[i + span - 1];
+        result.set(`${day}|${curr.slot_order}`, { type: "start", span, endTime: lastSlot.end_time });
+        for (let j = 1; j < span; j++) {
+          result.set(`${day}|${nonBreak[i + j].slot_order}`, { type: "skip" });
+        }
+        i += span;
+      } else {
+        i++;
+      }
+    }
+  }
+  return result;
+}
+
 // Generate faculty initials/abbreviation from name
 function facultyAbbr(name: string) {
   const parts = name.split(/\s+/);
@@ -110,14 +206,41 @@ export function exportDepartmentPDF(
 
   const headRows = hasBatches ? [headerRow1, headerRow2] : [headerRow1];
 
+  // Detect merged lab blocks
+  const labBlocks = detectLabBlocks(slots, days, lookup);
+
   // Build body rows
   const bodyRows: any[][] = [];
   for (const slot of slots) {
     const row: any[] = [];
 
-    // Time cell
+    // Check if entire row is skipped (all day cells are either "skip" or have no entries)
+    const allSkipped = slot.slot_type !== "break" && days.every((d) => {
+      const info = labBlocks.get(`${d}|${slot.slot_order}`);
+      if (info?.type === "skip") return true;
+      if (info?.type === "start") return false;
+      // No block info — skip if no entries exist for this slot
+      return (lookup.get(`${d}|${slot.slot_order}`) || []).length === 0;
+    });
+
+    // Time cell — compute merged time range if this starts a lab block
+    let timeLabel = `${slot.start_time} to ${slot.end_time}\n${slot.label}`;
+    // If any day has a lab block starting here, show merged time range
+    if (slot.slot_type !== "break") {
+      for (const day of days) {
+        const info = labBlocks.get(`${day}|${slot.slot_order}`);
+        if (info?.type === "start") {
+          timeLabel = `${slot.start_time} to ${info.endTime}\n${slot.label} (${info.span}h)`;
+          break;
+        }
+      }
+    }
+
+    // If this is a continuation row for ALL days, skip it entirely
+    if (allSkipped) continue;
+
     row.push({
-      content: `${slot.start_time} to ${slot.end_time}\n${slot.label}`,
+      content: timeLabel,
       styles: { fontStyle: "bold", fontSize: 5, halign: "center", valign: "middle" },
     });
 
@@ -138,6 +261,22 @@ export function exportDepartmentPDF(
     const isLabSlot = labPeriods.has(slot.slot_order);
 
     for (const day of days) {
+      const blockInfo = labBlocks.get(`${day}|${slot.slot_order}`);
+
+      // If this day/slot is a "skip" (continuation of block), show empty merged cell
+      if (blockInfo?.type === "skip") {
+        if (hasBatches && isLabSlot) {
+          for (const _bn of batchNames) {
+            row.push({ content: "", styles: { halign: "center", valign: "middle" } });
+          }
+        } else if (hasBatches) {
+          row.push({ content: "", colSpan: numBatches, styles: { halign: "center", valign: "middle" } });
+        } else {
+          row.push({ content: "", styles: { halign: "center", valign: "middle" } });
+        }
+        continue;
+      }
+
       const cellEntries = lookup.get(`${day}|${slot.slot_order}`) || [];
 
       if (hasBatches && isLabSlot) {
@@ -145,8 +284,9 @@ export function exportDepartmentPDF(
         for (const bn of batchNames) {
           const entry = cellEntries.find((e) => e.batch === bn);
           if (entry) {
+            const hours = blockInfo?.type === "start" ? ` (${blockInfo.span}h)` : "";
             row.push({
-              content: `${entry.subject_name}\n${facultyAbbr(entry.faculty_name)}\n${entry.room_name}`,
+              content: `${entry.subject_name}\n${facultyAbbr(entry.faculty_name)}\n${entry.room_name}${hours}`,
               styles: { fontSize: 4.5, halign: "center", valign: "middle", cellPadding: 0.5 },
             });
           } else {
@@ -321,11 +461,38 @@ export function exportExcelWorkbook(tt: Timetable, slots: TimeSlot[]) {
     }
   }
 
+  const xlLabBlocks = detectLabBlocks(slots, days, lookup);
+
   const gridData: string[][] = [headerRow1];
   if (hasBatches) gridData.push(headerRow2);
 
+  // Track row indices for merging
+  const xlMergeRows: XLSX.Range[] = [];
+  const headerOffset = hasBatches ? 2 : 1;
+
   for (const slot of slots) {
-    const row: string[] = [`${slot.start_time}-${slot.end_time} ${slot.label}`];
+    // Skip continuation rows entirely
+    const allSkip = slot.slot_type !== "break" && days.every((d) => {
+      const info = xlLabBlocks.get(`${d}|${slot.slot_order}`);
+      if (info?.type === "skip") return true;
+      if (info?.type === "start") return false;
+      return (lookup.get(`${d}|${slot.slot_order}`) || []).length === 0;
+    });
+    if (allSkip) continue;
+
+    // Time label
+    let timeLabel = `${slot.start_time}-${slot.end_time} ${slot.label}`;
+    if (slot.slot_type !== "break") {
+      for (const day of days) {
+        const info = xlLabBlocks.get(`${day}|${slot.slot_order}`);
+        if (info?.type === "start") {
+          timeLabel = `${slot.start_time}-${info.endTime} ${slot.label} (${info.span}h)`;
+          break;
+        }
+      }
+    }
+
+    const row: string[] = [timeLabel];
     if (slot.slot_type === "break") {
       for (let i = 0; i < days.length * numBatches; i++) row.push(slot.label.toUpperCase());
       gridData.push(row);
@@ -334,11 +501,27 @@ export function exportExcelWorkbook(tt: Timetable, slots: TimeSlot[]) {
     const isLabSlot = labPeriods.has(slot.slot_order);
 
     for (const day of days) {
+      const blockInfo = xlLabBlocks.get(`${day}|${slot.slot_order}`);
       const cellEntries = lookup.get(`${day}|${slot.slot_order}`) || [];
+
+      if (blockInfo?.type === "skip") {
+        // Fill empty for skipped
+        if (hasBatches && isLabSlot) {
+          for (const _bn of batchNames) row.push("");
+        } else if (hasBatches) {
+          row.push("");
+          for (let i = 1; i < numBatches; i++) row.push("");
+        } else {
+          row.push("");
+        }
+        continue;
+      }
+
       if (hasBatches && isLabSlot) {
         for (const bn of batchNames) {
           const entry = cellEntries.find((e) => e.batch === bn);
-          row.push(entry ? `${entry.subject_name}\n${entry.faculty_name}\n${entry.room_name}` : "—");
+          const hours = blockInfo?.type === "start" ? ` (${blockInfo.span}h)` : "";
+          row.push(entry ? `${entry.subject_name}\n${entry.faculty_name}\n${entry.room_name}${hours}` : "—");
         }
       } else if (hasBatches) {
         const e = cellEntries[0];
@@ -431,16 +614,41 @@ export function exportFacultyPDF(
     lookup.set(`${e.day}|${e.period}`, e);
   }
 
+  const facBlocks = detectSingleBlocks(slots, days, lookup);
+
   const rows: string[][] = [];
   for (const slot of slots) {
-    const row: string[] = [`${slot.start_time}-${slot.end_time}`];
+    // Skip continuation rows
+    const allSkip = slot.slot_type !== "break" && days.every((d) => {
+      const info = facBlocks.get(`${d}|${slot.slot_order}`);
+      if (info?.type === "skip") return true;
+      if (info?.type === "start") return false;
+      return !lookup.get(`${d}|${slot.slot_order}`);
+    });
+    if (allSkip) continue;
+
+    let timeLabel = `${slot.start_time}-${slot.end_time}`;
+    if (slot.slot_type !== "break") {
+      for (const day of days) {
+        const info = facBlocks.get(`${day}|${slot.slot_order}`);
+        if (info?.type === "start") {
+          timeLabel = `${slot.start_time}-${info.endTime}`;
+          break;
+        }
+      }
+    }
+
+    const row: string[] = [timeLabel];
     for (const day of days) {
       if (slot.slot_type === "break") {
         row.push(slot.label);
         continue;
       }
+      const blockInfo = facBlocks.get(`${day}|${slot.slot_order}`);
+      if (blockInfo?.type === "skip") { row.push(""); continue; }
       const entry = lookup.get(`${day}|${slot.slot_order}`);
-      row.push(entry ? `${entry.subject_name}\n${entry.room_name}${entry.batch ? `\n(${entry.batch})` : ""}` : "—");
+      const hours = blockInfo?.type === "start" ? ` (${blockInfo.span}h)` : "";
+      row.push(entry ? `${entry.subject_name}\n${entry.room_name}${entry.batch ? `\n(${entry.batch})` : ""}${hours}` : "—");
     }
     rows.push(row);
   }
@@ -482,13 +690,37 @@ export function exportRoomPDF(tt: Timetable, slots: TimeSlot[]) {
       lookup.set(`${e.day}|${e.period}`, e);
     }
 
+    const roomBlocks = detectSingleBlocks(slots, days, lookup);
+
     const rows: string[][] = [];
     for (const slot of slots) {
-      const row: string[] = [`${slot.start_time}-${slot.end_time}`];
+      const allSkip = slot.slot_type !== "break" && days.every((d) => {
+        const info = roomBlocks.get(`${d}|${slot.slot_order}`);
+        if (info?.type === "skip") return true;
+        if (info?.type === "start") return false;
+        return !lookup.get(`${d}|${slot.slot_order}`);
+      });
+      if (allSkip) continue;
+
+      let timeLabel = `${slot.start_time}-${slot.end_time}`;
+      if (slot.slot_type !== "break") {
+        for (const day of days) {
+          const info = roomBlocks.get(`${day}|${slot.slot_order}`);
+          if (info?.type === "start") {
+            timeLabel = `${slot.start_time}-${info.endTime}`;
+            break;
+          }
+        }
+      }
+
+      const row: string[] = [timeLabel];
       for (const day of days) {
         if (slot.slot_type === "break") { row.push("—"); continue; }
+        const blockInfo = roomBlocks.get(`${day}|${slot.slot_order}`);
+        if (blockInfo?.type === "skip") { row.push(""); continue; }
         const entry = lookup.get(`${day}|${slot.slot_order}`);
-        row.push(entry ? `${entry.subject_name}\n${entry.faculty_name}${entry.batch ? `\n(${entry.batch})` : ""}` : "—");
+        const hours = blockInfo?.type === "start" ? ` (${blockInfo.span}h)` : "";
+        row.push(entry ? `${entry.subject_name}\n${entry.faculty_name}${entry.batch ? `\n(${entry.batch})` : ""}${hours}` : "—");
       }
       rows.push(row);
     }
