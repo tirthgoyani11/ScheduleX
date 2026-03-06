@@ -13,11 +13,19 @@ export function useTimetable(timetableId?: string) {
     enabled: !timetableId,
   });
 
-  // Fetch single timetable
+  // Fetch single timetable — poll while DRAFT with no entries (still generating)
   const singleQuery = useQuery<Timetable>({
     queryKey: ["timetable", timetableId],
     queryFn: () => api.get(`/timetable/${timetableId}`),
     enabled: !!timetableId,
+    refetchInterval: (query) => {
+      const tt = query.state.data;
+      if (!tt) return false;
+      const isDraft = tt.status === "DRAFT" || tt.status === "draft";
+      const isEmpty = !tt.entries || tt.entries.length === 0;
+      // Poll every 2s while timetable is still being generated
+      return isDraft && isEmpty ? 2000 : false;
+    },
   });
 
   const generateMutation = useMutation({

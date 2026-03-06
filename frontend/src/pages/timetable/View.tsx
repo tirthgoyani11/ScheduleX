@@ -123,6 +123,21 @@ export default function TimetableViewPage() {
     );
   }
 
+  const isDraft = tt.status === "DRAFT" || tt.status === "draft";
+  const isGenerating = isDraft && (!tt.entries || tt.entries.length === 0);
+
+  if (isGenerating) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <div className="text-center space-y-1">
+          <p className="text-base font-medium">Generating timetable…</p>
+          <p className="text-sm text-muted-foreground">The solver is working. This usually takes a few seconds.</p>
+        </div>
+      </div>
+    );
+  }
+
   const score = tt.optimization_score ?? 0;
   const hasBatches = batchNames.length > 0;
 
