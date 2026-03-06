@@ -205,6 +205,35 @@ async def generate_timetable(
     Triggers timetable generation as a background RQ job.
     Returns job_id immediately (<100ms).
     """
+    # Clean up old draft/deleted timetables for same dept+semester to free global bookings
+    old_tts = await db.execute(
+        select(Timetable).where(
+            Timetable.dept_id == current_user.dept_id,
+            Timetable.semester == request.semester,
+            Timetable.status.in_([TimetableStatus.DRAFT, TimetableStatus.DELETED]),
+        )
+    )
+    for old_tt in old_tts.scalars().all():
+        # Delete global bookings tied to this timetable's entries
+        await db.execute(
+            GlobalBooking.__table__.delete().where(
+                GlobalBooking.timetable_entry_id.in_(
+                    select(TimetableEntry.entry_id).where(
+                        TimetableEntry.timetable_id == old_tt.timetable_id
+                    )
+                )
+            )
+        )
+        # Delete entries
+        await db.execute(
+            TimetableEntry.__table__.delete().where(
+                TimetableEntry.timetable_id == old_tt.timetable_id
+            )
+        )
+        # Delete the timetable itself
+        await db.delete(old_tt)
+    await db.flush()
+
     timetable = Timetable(
         timetable_id=str(uuid.uuid4()),
         dept_id=current_user.dept_id,
