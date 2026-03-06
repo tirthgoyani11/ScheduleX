@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TimeSlot } from "@/types";
 import { DEFAULT_TIME_SLOTS } from "@/types";
-import api from "@/lib/api";
+import { apiClient as api } from "@/lib/api-client";
 
 /**
  * Fetches time slots from the backend API.
