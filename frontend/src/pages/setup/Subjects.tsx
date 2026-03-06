@@ -10,65 +10,59 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SubjectsSkeleton } from "@/components/skeletons/PageSkeletons";
+import type { Subject } from "@/types";
+
+const defaultForm = {
+  name: "", code: "", credits: 3, lectureHours: 3, labHours: 0, batchSize: 60, batch: "", needsLab: false,
+};
 
 export default function SubjectsPage() {
   const { currentSemester, setSemester } = useSetupStore();
   const { data: allSubjects, isLoading, create, update, remove } = useSubjects(currentSemester);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingSubject, setEditingSubject] = useState<any>(null);
-  const [newName, setNewName] = useState("");
-  const [newCode, setNewCode] = useState("");
-  const [newNeedsLab, setNewNeedsLab] = useState(false);
-  const [newCredits, setNewCredits] = useState(3);
-  const [newPeriods, setNewPeriods] = useState(3);
-  const [newBatchSize, setNewBatchSize] = useState(0);
-  const [newBatch, setNewBatch] = useState("");
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [form, setForm] = useState(defaultForm);
 
-  const handleEdit = (subject: any) => {
-    setEditingSubject(subject);
-    setNewName(subject.name);
-    setNewCode(subject.subject_code);
-    setNewNeedsLab(subject.needs_lab);
-    setNewCredits(subject.credits);
-    setNewPeriods(subject.weekly_periods);
-    setNewBatchSize(subject.batch_size || 0);
-    setNewBatch(subject.batch || "");
+  const openCreate = () => {
+    setEditingSubject(null);
+    setForm(defaultForm);
     setDialogOpen(true);
   };
 
-  const handleAdd = async () => {
+  const openEdit = (sub: Subject) => {
+    setEditingSubject(sub);
+    setForm({
+      name: sub.name,
+      code: sub.subject_code,
+      credits: sub.credits,
+      lectureHours: sub.lecture_hours || sub.weekly_periods,
+      labHours: sub.lab_hours || 0,
+      batchSize: sub.batch_size || 60,
+      batch: sub.batch || "",
+      needsLab: sub.needs_lab,
+    });
+    setDialogOpen(true);
+  };
+
+  const handleSave = async () => {
+    const body = {
+      name: form.name,
+      subject_code: form.code,
+      semester: currentSemester,
+      credits: form.credits,
+      weekly_periods: form.lectureHours + form.labHours,
+      lecture_hours: form.lectureHours,
+      lab_hours: form.labHours,
+      needs_lab: form.labHours > 0 || form.needsLab,
+      batch_size: form.batchSize,
+      batch: form.batch || undefined,
+    };
     if (editingSubject) {
-      await update(editingSubject.subject_id, {
-        name: newName,
-        subject_code: newCode,
-        semester: currentSemester,
-        credits: newCredits,
-        weekly_periods: newPeriods,
-        needs_lab: newNeedsLab,
-        batch_size: newBatchSize,
-        batch: newBatch || undefined,
-      });
+      await update(editingSubject.subject_id, body);
     } else {
-      await create({
-        name: newName,
-        subject_code: newCode,
-        semester: currentSemester,
-        credits: newCredits,
-        weekly_periods: newPeriods,
-        needs_lab: newNeedsLab,
-        batch_size: newBatchSize,
-        batch: newBatch || undefined,
-      });
+      await create(body);
     }
     setDialogOpen(false);
-    setEditingSubject(null);
-    setNewName("");
-    setNewCode("");
-    setNewNeedsLab(false);
-    setNewCredits(3);
-    setNewPeriods(3);
-    setNewBatchSize(0);
-    setNewBatch("");
   };
 
   if (isLoading && allSubjects.length === 0) return <SubjectsSkeleton />;
@@ -76,64 +70,7 @@ export default function SubjectsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Subjects" description="Manage subjects by semester">
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingSubject(null); setNewName(""); setNewCode(""); setNewNeedsLab(false); setNewCredits(3); setNewPeriods(3); setNewBatchSize(0); setNewBatch(""); } }}>
-          <DialogTrigger asChild>
-            <Button className="rounded-xl btn-press gap-2"><Plus className="h-4 w-4" />Add Subject</Button>
-          </DialogTrigger>
-          <DialogContent className="rounded-lg max-w-md">
-            <DialogHeader><DialogTitle className="font-display">{editingSubject ? "Edit Subject" : "Add Subject"}</DialogTitle></DialogHeader>
-            <div className="space-y-4 mt-2">
-              <div className="space-y-2">
-                <Label>Subject Name</Label>
-                <Input className="rounded-xl" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Data Structures" />
-              </div>
-              <div className="space-y-2">
-                <Label>Subject Code</Label>
-                <Input className="rounded-xl font-mono" value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="DSA301" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Credits</Label>
-                  <Input type="number" className="rounded-xl" value={newCredits} onChange={(e) => setNewCredits(Number(e.target.value))} min={1} max={6} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Periods/week</Label>
-                  <Input type="number" className="rounded-xl" value={newPeriods} onChange={(e) => setNewPeriods(Number(e.target.value))} min={1} max={10} />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    [false, "📚 Theory"],
-                    [true, "🔬 Needs Lab"],
-                  ] as const).map(([val, lbl]) => (
-                    <button
-                      key={String(val)}
-                      onClick={() => setNewNeedsLab(val)}
-                      className={`p-2.5 rounded-xl border-2 text-xs font-medium transition-all ${
-                        newNeedsLab === val ? "border-primary bg-accent" : "border-border hover:border-border-strong"
-                      }`}
-                    >
-                      {lbl}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Batch Size</Label>
-                  <Input type="number" className="rounded-xl" value={newBatchSize} onChange={(e) => setNewBatchSize(Number(e.target.value))} min={0} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Batch Label</Label>
-                  <Input className="rounded-xl" value={newBatch} onChange={(e) => setNewBatch(e.target.value)} placeholder="Batch A" />
-                </div>
-              </div>
-              <Button onClick={handleAdd} className="w-full rounded-xl btn-press">{editingSubject ? "Update Subject" : "Add Subject"}</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button className="rounded-xl btn-press gap-2" onClick={openCreate}><Plus className="h-4 w-4" />Add Subject</Button>
       </PageHeader>
 
       {/* Semester tabs */}
@@ -152,7 +89,7 @@ export default function SubjectsPage() {
       </div>
 
       {allSubjects.length === 0 ? (
-        <EmptyState icon={BookOpen} title="No subjects" description={`No subjects found for Semester ${currentSemester}`} actionLabel="Add Subject" onAction={() => setDialogOpen(true)} />
+        <EmptyState icon={BookOpen} title="No subjects" description={`No subjects found for Semester ${currentSemester}`} actionLabel="Add Subject" onAction={openCreate} />
       ) : (
         <div className="bg-card rounded-lg shadow-sm overflow-hidden">
           <table className="w-full text-sm">
@@ -162,7 +99,8 @@ export default function SubjectsPage() {
                 <th className="text-left py-3 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Name</th>
                 <th className="text-left py-3 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Type</th>
                 <th className="text-left py-3 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Credits</th>
-                <th className="text-left py-3 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Periods/wk</th>
+                <th className="text-left py-3 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">L</th>
+                <th className="text-left py-3 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">P</th>
                 <th className="text-left py-3 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Batch</th>
                 <th className="py-3 px-4"></th>
               </tr>
@@ -172,13 +110,14 @@ export default function SubjectsPage() {
                 <tr key={sub.subject_id} className="border-b border-border last:border-0 group hover:bg-accent/50 transition-colors">
                   <td className="py-3 px-4 font-mono font-medium">{sub.subject_code}</td>
                   <td className="py-3 px-4">{sub.name}</td>
-                  <td className="py-3 px-4"><StatusChip variant={getSubjectChipVariant(sub.needs_lab)} label={sub.needs_lab ? "LAB" : "THEORY"} /></td>
+                  <td className="py-3 px-4"><StatusChip variant={getSubjectChipVariant(sub.needs_lab)} label={sub.lab_hours > 0 ? "L+P" : "THEORY"} /></td>
                   <td className="py-3 px-4">{sub.credits}</td>
-                  <td className="py-3 px-4">{sub.weekly_periods}</td>
+                  <td className="py-3 px-4">{sub.lecture_hours || sub.weekly_periods}</td>
+                  <td className="py-3 px-4">{sub.lab_hours || 0}</td>
                   <td className="py-3 px-4">{sub.batch || "—"}</td>
                   <td className="py-3 px-4">
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
-                      <Button variant="ghost" size="icon" className="rounded-xl h-7 w-7" onClick={() => handleEdit(sub)}><Pencil className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="icon" className="rounded-xl h-7 w-7" onClick={() => openEdit(sub)}><Pencil className="h-3.5 w-3.5" /></Button>
                       <Button variant="ghost" size="icon" className="rounded-xl h-7 w-7 text-destructive" onClick={() => remove(sub.subject_id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </div>
                   </td>
@@ -188,6 +127,50 @@ export default function SubjectsPage() {
           </table>
         </div>
       )}
+
+      {/* Create / Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="rounded-lg max-w-md">
+          <DialogHeader><DialogTitle className="font-display">{editingSubject ? "Edit Subject" : "Add Subject"}</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label>Subject Name</Label>
+              <Input className="rounded-xl" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Data Structures" />
+            </div>
+            <div className="space-y-2">
+              <Label>Subject Code</Label>
+              <Input className="rounded-xl font-mono" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="DSA301" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>Credits</Label>
+                <Input type="number" className="rounded-xl" value={form.credits} onChange={(e) => setForm({ ...form, credits: Number(e.target.value) })} min={1} max={6} />
+              </div>
+              <div className="space-y-2">
+                <Label>Lecture hrs/wk</Label>
+                <Input type="number" className="rounded-xl" value={form.lectureHours} onChange={(e) => setForm({ ...form, lectureHours: Number(e.target.value) })} min={0} max={10} />
+              </div>
+              <div className="space-y-2">
+                <Label>Lab hrs/wk</Label>
+                <Input type="number" className="rounded-xl" value={form.labHours} onChange={(e) => setForm({ ...form, labHours: Number(e.target.value) })} min={0} max={10} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Batch Size</Label>
+                <Input type="number" className="rounded-xl" value={form.batchSize} onChange={(e) => setForm({ ...form, batchSize: Number(e.target.value) })} min={0} />
+              </div>
+              <div className="space-y-2">
+                <Label>Batch Label</Label>
+                <Input className="rounded-xl" value={form.batch} onChange={(e) => setForm({ ...form, batch: e.target.value })} placeholder="Batch A" />
+              </div>
+            </div>
+            <Button onClick={handleSave} className="w-full rounded-xl btn-press" disabled={!form.name.trim() || !form.code.trim()}>
+              {editingSubject ? "Update Subject" : "Add Subject"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
