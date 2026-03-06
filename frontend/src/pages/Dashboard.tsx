@@ -38,7 +38,12 @@ export default function DashboardPage() {
     ? Math.round(roomUtilisation.reduce((sum, r) => sum + r.utilisation_pct, 0) / roomUtilisation.length)
     : 0;
 
-  const COLORS = ["hsl(142,64%,24%)", "hsl(27,96%,48%)", "hsl(221,83%,53%)", "hsl(280,67%,51%)", "hsl(0,72%,51%)"];
+  const COLORS = [
+    "hsl(142,64%,24%)", "hsl(27,96%,48%)", "hsl(221,83%,53%)",
+    "hsl(280,67%,51%)", "hsl(0,72%,51%)", "hsl(190,80%,42%)",
+    "hsl(45,93%,47%)", "hsl(330,65%,50%)", "hsl(160,60%,40%)",
+    "hsl(260,50%,60%)", "hsl(15,80%,55%)", "hsl(200,70%,50%)",
+  ];
   const roomUtilData = roomUtilisation.map((r, i) => ({
     name: r.name,
     value: r.utilisation_pct,
@@ -68,7 +73,7 @@ export default function DashboardPage() {
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        <div className="lg:col-span-3 bg-card rounded-lg shadow-sm p-5">
+        <div className="lg:col-span-3 bg-card rounded-lg shadow-sm p-5 overflow-hidden">
           <h3 className="text-base font-medium font-display mb-4">Faculty Workload</h3>
           {workloadData.length > 0 ? (
             <WorkloadChart data={workloadData} />
@@ -76,7 +81,7 @@ export default function DashboardPage() {
             <p className="text-sm text-muted-foreground">No faculty data yet. Add faculty members to see workload.</p>
           )}
         </div>
-        <div className="lg:col-span-2 bg-card rounded-lg shadow-sm p-5">
+        <div className="lg:col-span-2 bg-card rounded-lg shadow-sm p-5 overflow-hidden">
           <h3 className="text-base font-medium font-display mb-4">Room Utilization</h3>
           {roomUtilData.length > 0 ? (
             <RoomUtilizationChart data={roomUtilData} percentage={avgRoomUtil} />

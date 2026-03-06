@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 interface WorkloadItem {
   name: string;
@@ -15,10 +15,13 @@ export function WorkloadChart({ data }: { data: WorkloadItem[] }) {
     return "hsl(142, 64%, 24%)";
   };
 
+  // Dynamic height: 40px per bar, min 160, max 400
+  const chartHeight = Math.min(400, Math.max(160, data.length * 40));
+
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ResponsiveContainer width="100%" height={chartHeight}>
       <BarChart data={data} layout="vertical" margin={{ left: 20, right: 20, top: 0, bottom: 0 }}>
-        <XAxis type="number" domain={[0, 30]} tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
+        <XAxis type="number" domain={[0, "auto"]} tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
         <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
         <Tooltip
           formatter={(value: number, _name: string, props: { payload: WorkloadItem }) => [`${value}/${props.payload.max} hrs`, "Workload"]}

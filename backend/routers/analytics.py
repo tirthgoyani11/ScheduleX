@@ -8,8 +8,20 @@ from models.faculty import Faculty
 from models.timetable import Timetable, TimetableEntry, TimetableStatus
 from models.room import Room
 from models.substitution import Substitution
+from models.college import Department
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
+
+
+def _dept_filter(col, user: User):
+    """Return a WHERE clause scoped to the user's department,
+    or all departments in their college if they are a super admin."""
+    if user.dept_id is not None:
+        return col == user.dept_id
+    # Super admin: all departments in the college
+    return col.in_(
+        select(Department.dept_id).where(Department.college_id == user.college_id)
+    )
 
 
 @router.get("/dashboard")
@@ -23,20 +35,20 @@ async def dashboard(
     # Count faculty
     faculty_count = await db.execute(
         select(func.count(Faculty.faculty_id)).where(
-            Faculty.dept_id == current_user.dept_id
+            _dept_filter(Faculty.dept_id, current_user)
         )
     )
     # Count timetables
     tt_count = await db.execute(
         select(func.count(Timetable.timetable_id)).where(
-            Timetable.dept_id == current_user.dept_id,
+            _dept_filter(Timetable.dept_id, current_user),
             Timetable.status != TimetableStatus.DELETED,
         )
     )
     # Count subjects
     subject_count = await db.execute(
         select(func.count(Subject.subject_id)).where(
-            Subject.dept_id == current_user.dept_id
+            _dept_filter(Subject.dept_id, current_user)
         )
     )
     # Count rooms
@@ -67,7 +79,7 @@ async def faculty_load(
             func.count(TimetableEntry.entry_id).label("assigned_periods"),
         )
         .outerjoin(TimetableEntry, Faculty.faculty_id == TimetableEntry.faculty_id)
-        .where(Faculty.dept_id == current_user.dept_id)
+        .where(_dept_filter(Faculty.dept_id, current_user))
         .group_by(Faculty.faculty_id, Faculty.name, Faculty.max_weekly_load)
     )
     rows = result.all()
