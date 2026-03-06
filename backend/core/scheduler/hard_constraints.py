@@ -143,9 +143,26 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
     # ── HC_contig: Lab sessions must be consecutive periods, SAME room ──────
     # For each (subject, faculty, batch) with lab_hours >= 2, exactly one
     # "block" is chosen: a (day, starting_period, room) tuple.  The block
-    # occupies consecutive slot_orders p, p+1, … in the SAME lab room.
+    # occupies adjacent schedulable periods in the SAME lab room.
+    # "Adjacent" means consecutive in the sorted schedulable period list,
+    # with no lunch/long break in between.
     slot_lookup = data.get("slot_lookup", {})
     sorted_lab = sorted(lab_periods)
+
+    # Detect break slot_orders to prevent blocks spanning across lunch
+    break_orders = set()
+    for order, slot in slot_lookup.items():
+        if slot.slot_type.value == "break":
+            break_orders.add(order)
+
+    def _periods_adjacent(p1: int, p2: int) -> bool:
+        """Check two schedulable periods are truly adjacent (no break between)."""
+        lo, hi = min(p1, p2), max(p1, p2)
+        for b in break_orders:
+            if lo < b < hi:
+                return False
+        return True
+
     lab_room_list = [r for r in data["rooms"] if r.room_type.value == "lab"]
     for subject in data["subjects"]:
         lh = subject.lab_hours
@@ -162,7 +179,7 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
                 start_vars = []
                 for day in days:
                     for i in range(len(sorted_lab)):
-                        # Build a block of lh consecutive slot_orders
+                        # Build a block of lh adjacent schedulable periods
                         block = []
                         valid = True
                         for offset in range(lh):
@@ -171,7 +188,7 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
                                 valid = False
                                 break
                             p = sorted_lab[idx]
-                            if offset > 0 and p != sorted_lab[idx - 1] + 1:
+                            if offset > 0 and not _periods_adjacent(sorted_lab[idx - 1], p):
                                 valid = False
                                 break
                             block.append(p)
