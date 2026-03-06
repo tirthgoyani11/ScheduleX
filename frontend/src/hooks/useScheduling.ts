@@ -43,10 +43,14 @@ export function useScheduling(timetableId?: string) {
   }
 
   // ── Date-specific availability check ──
-  function useDateCheck(date: string | undefined) {
+  function useDateCheck(date: string | undefined, semester?: number) {
     return useQuery<DateCheckResult>({
-      queryKey: ["date-check", date],
-      queryFn: () => api.get("/scheduling/date-check", { date: date! }),
+      queryKey: ["date-check", date, semester],
+      queryFn: () => {
+        const params: Record<string, string | number> = { date: date! };
+        if (semester) params.semester = semester;
+        return api.get("/scheduling/date-check", params);
+      },
       enabled: !!date,
     });
   }

@@ -13,6 +13,7 @@ from models.global_booking import GlobalBooking
 from models.faculty import Faculty
 from models.subject import Subject
 from models.room import Room
+from models.college import Department
 from models.timeslot import TimeSlotConfig
 from models.slot_booking import SlotBooking, BookingType, BookingStatus
 from schemas.scheduling import (
@@ -119,16 +120,14 @@ async def _get_date_booking_details(college_id: str, target_date: str, db: Async
 async def _get_student_busy_slots(timetable_id: str, db: AsyncSession):
     """Return set of (day, period) where students of this timetable already have a class.
     Students are identified by the timetable's dept+semester.
-    For regular (non-batch) entries, the entire slot is busy.
-    For batch entries, only that batch is busy — but we mark the whole slot as busy
-    to be safe for rescheduling regular lectures.
+    ANY entry (whole-class or batch) at a (day, period) means students are busy —
+    rescheduling a lecture into a slot where even one batch has a lab would conflict.
     """
     result = await db.execute(
         select(TimetableEntry.day, TimetableEntry.period)
         .where(
             TimetableEntry.timetable_id == timetable_id,
             TimetableEntry.entry_type == EntryType.REGULAR,
-            TimetableEntry.batch.is_(None),  # only non-batch (whole-class) entries
         )
     )
     return {(r.day, r.period) for r in result.all()}
@@ -233,10 +232,13 @@ async def get_reschedule_options(
         except ValueError:
             pass
 
-    # Get all rooms
-    room_result = await db.execute(
-        select(Room).where(Room.college_id == college_id)
-    )
+    # Get rooms belonging to this timetable's department (matched by name prefix)
+    dept = await db.get(Department, tt.dept_id)
+    dept_code = dept.code if dept else ""
+    room_query = select(Room).where(Room.college_id == college_id)
+    if dept_code:
+        room_query = room_query.where(Room.name.startswith(dept_code + "-"))
+    room_result = await db.execute(room_query)
     all_rooms = room_result.scalars().all()
 
     results: list[FreeSlotWithRoomsResponse] = []
@@ -278,6 +280,7 @@ async def get_reschedule_options(
 @router.get("/date-check", response_model=DateCheckResponse)
 async def check_date_availability(
     date: str,
+    semester: int | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -285,6 +288,10 @@ async def check_date_availability(
     Check room and faculty availability for every time slot on a specific date.
     Considers both the regular timetable (GlobalBooking) AND approved SlotBookings
     that target this specific date.
+
+    If `semester` is provided and the user belongs to a department, only slots
+    where the department's students are free (no entry in the published timetable
+    for that dept+semester on that day) are returned.
 
     `date` format: YYYY-MM-DD (e.g. "2026-03-10")
     """
@@ -324,11 +331,34 @@ async def check_date_availability(
     )
     load_map = {r[0]: r[1] for r in load_result.all()}
 
+    # If semester + dept_id given, find busy (day, period) for that dept's
+    # published timetable so we can filter to only free-for-dept slots.
+    dept_busy_periods: set[tuple[str, int]] = set()
+    if semester and dept_id:
+        tt_result = await db.execute(
+            select(Timetable).where(
+                Timetable.dept_id == dept_id,
+                Timetable.semester == semester,
+                Timetable.status == TimetableStatus.PUBLISHED,
+            )
+        )
+        pub_tt = tt_result.scalars().first()
+        if pub_tt:
+            entry_result = await db.execute(
+                select(TimetableEntry.day, TimetableEntry.period)
+                .where(TimetableEntry.timetable_id == pub_tt.timetable_id)
+            )
+            dept_busy_periods = {(r.day, r.period) for r in entry_result.all()}
+
     slot_results: list[DateSlotCheckResponse] = []
     for s in slots:
         if s.slot_type.value == "break":
             continue
         period = s.slot_order
+
+        # Skip slots that are busy for the department's students
+        if dept_busy_periods and (day_name, period) in dept_busy_periods:
+            continue
 
         free_rooms_list = []
         busy_rooms_list = []
