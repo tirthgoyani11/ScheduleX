@@ -74,11 +74,10 @@ def apply_soft_constraints(
     Returns a list of penalty IntVar terms to be summed in the objective.
     Each penalty is a BoolVar * weight (or IntVar for linear penalties).
     """
-    assignments = variables["assignments"]
     by_faculty_slot = variables["by_faculty_slot"]
-    by_batch_slot = variables["by_batch_slot"]
     by_faculty = variables["by_faculty"]
     by_faculty_day = variables["by_faculty_day"]
+    by_theory_slot = variables.get("by_theory_slot", {})
 
     penalties: list = []
     days = data["days"]
@@ -108,43 +107,39 @@ def apply_soft_constraints(
                 ).OnlyEnforceIf(lunch_penalty.Not())
                 penalties.append(lunch_penalty * PENALTY_WEIGHTS["lunch_break"])
 
-    # ── SC2: Avoid large gaps between classes for batches (weight: 80) ────────
-    all_batches = list(set(
-        s.batch for s in data["subjects"] if hasattr(s, "batch") and s.batch
-    ))
-    for batch in all_batches:
-        for day in days:
-            for p1 in range(1, max(periods) - 1):
-                p2 = p1 + 2
-                if p2 > max(periods):
-                    continue
-                p_mid = p1 + 1
+    # ── SC2: Avoid gaps in theory schedule for students (weight: 80) ──────────
+    lecture_periods_sorted = sorted(variables.get("lecture_periods", []))
+    for day in days:
+        for idx in range(len(lecture_periods_sorted) - 2):
+            p1 = lecture_periods_sorted[idx]
+            p_mid = lecture_periods_sorted[idx + 1]
+            p2 = lecture_periods_sorted[idx + 2]
 
-                before_vars = by_batch_slot.get((batch, day, p1), [])
-                after_vars = by_batch_slot.get((batch, day, p2), [])
-                gap_vars = by_batch_slot.get((batch, day, p_mid), [])
+            before_vars = [v for _, v in by_theory_slot.get((day, p1), [])]
+            gap_vars = [v for _, v in by_theory_slot.get((day, p_mid), [])]
+            after_vars = [v for _, v in by_theory_slot.get((day, p2), [])]
 
-                if before_vars and after_vars and gap_vars:
-                    has_before = model.NewBoolVar(f"gap_b_{batch[:6]}_{day[:3]}_{p1}")
-                    has_after = model.NewBoolVar(f"gap_a_{batch[:6]}_{day[:3]}_{p1}")
-                    no_middle = model.NewBoolVar(f"gap_m_{batch[:6]}_{day[:3]}_{p1}")
-                    gap_penalty = model.NewBoolVar(f"gap_p_{batch[:6]}_{day[:3]}_{p1}")
+            if before_vars and after_vars and gap_vars:
+                has_before = model.NewBoolVar(f"gb_{day[:3]}_{p1}")
+                has_after = model.NewBoolVar(f"ga_{day[:3]}_{p1}")
+                no_middle = model.NewBoolVar(f"gm_{day[:3]}_{p1}")
+                gap_penalty = model.NewBoolVar(f"gp_{day[:3]}_{p1}")
 
-                    model.Add(sum(before_vars) >= 1).OnlyEnforceIf(has_before)
-                    model.Add(sum(before_vars) == 0).OnlyEnforceIf(has_before.Not())
+                model.Add(sum(before_vars) >= 1).OnlyEnforceIf(has_before)
+                model.Add(sum(before_vars) == 0).OnlyEnforceIf(has_before.Not())
 
-                    model.Add(sum(after_vars) >= 1).OnlyEnforceIf(has_after)
-                    model.Add(sum(after_vars) == 0).OnlyEnforceIf(has_after.Not())
+                model.Add(sum(after_vars) >= 1).OnlyEnforceIf(has_after)
+                model.Add(sum(after_vars) == 0).OnlyEnforceIf(has_after.Not())
 
-                    model.Add(sum(gap_vars) == 0).OnlyEnforceIf(no_middle)
-                    model.Add(sum(gap_vars) >= 1).OnlyEnforceIf(no_middle.Not())
+                model.Add(sum(gap_vars) == 0).OnlyEnforceIf(no_middle)
+                model.Add(sum(gap_vars) >= 1).OnlyEnforceIf(no_middle.Not())
 
-                    model.AddBoolAnd([has_before, has_after, no_middle]).OnlyEnforceIf(gap_penalty)
-                    model.AddBoolOr([
-                        has_before.Not(), has_after.Not(), no_middle.Not()
-                    ]).OnlyEnforceIf(gap_penalty.Not())
+                model.AddBoolAnd([has_before, has_after, no_middle]).OnlyEnforceIf(gap_penalty)
+                model.AddBoolOr([
+                    has_before.Not(), has_after.Not(), no_middle.Not()
+                ]).OnlyEnforceIf(gap_penalty.Not())
 
-                    penalties.append(gap_penalty * PENALTY_WEIGHTS["student_gap"])
+                penalties.append(gap_penalty * PENALTY_WEIGHTS["student_gap"])
 
     # ── SC3: Faculty time preference (weight: 50) ────────────────────────────
     for faculty in data["faculty"]:
@@ -155,13 +150,14 @@ def apply_soft_constraints(
                 else morning_periods
             )
             faculty_entries = by_faculty.get(fid, [])
-            for (f, s, r, d, p), var in faculty_entries:
-                if p in wrong_periods:
+            for key, var in faculty_entries:
+                # key[-1] is the period in both theory and lab keys
+                if key[-1] in wrong_periods:
                     penalties.append(var * PENALTY_WEIGHTS["faculty_preference"])
 
     # ── SC4: Avoid scheduling period 1 (early morning) (weight: 30) ──────────
     for day in days:
-        for (key, var) in variables.get("by_day_period", {}).get((day, 1), []):
+        for (key, var) in by_theory_slot.get((day, 1), []):
             penalties.append(var * PENALTY_WEIGHTS["avoid_early_morning"])
 
     log.info("soft_constraints_applied", penalty_terms=len(penalties))
