@@ -357,60 +357,115 @@ async def handle_generate(
             semester, faculty_subject_map, db, dept_id, college_id,
         )
 
-    # Step 3: Clean old drafts and create timetable
-    old_tts = await db.execute(
-        select(Timetable).where(
-            Timetable.dept_id == dept_id,
-            Timetable.semester == semester,
-            Timetable.status.in_([TimetableStatus.DRAFT, TimetableStatus.DELETED]),
+    # Step 2b: Proactive infrastructure fix — ensure labs/rooms can fit subjects
+    lab_fixed = await _fix_all_lab_capacities(db, college_id, subject_list, auto_fixes)
+    room_fixed = await _fix_all_room_capacities(db, college_id, subject_list, auto_fixes)
+    if lab_fixed or room_fixed:
+        # Refresh subject list after DB changes
+        sub_result = await db.execute(
+            select(SubjectModel).where(
+                SubjectModel.dept_id == dept_id,
+                SubjectModel.semester == semester,
+            )
         )
-    )
-    for old_tt in old_tts.scalars().all():
-        await db.execute(
-            GlobalBooking.__table__.delete().where(
-                GlobalBooking.timetable_entry_id.in_(
-                    select(TimetableEntry.entry_id).where(
-                        TimetableEntry.timetable_id == old_tt.timetable_id
+        subject_list = sub_result.scalars().all()
+
+    # Step 3: Solve with auto-fix retry loop
+    from core.scheduler.engine import generate_timetable as run_solver
+    from models.room import RoomType
+    from models.batch import Batch as BatchModel
+
+    max_solver_attempts = 4
+    last_result = None
+    last_diagnosis = None
+
+    for attempt in range(1, max_solver_attempts + 1):
+        # ── Clean old drafts ──────────────────────────────────────────────
+        old_tts = await db.execute(
+            select(Timetable).where(
+                Timetable.dept_id == dept_id,
+                Timetable.semester == semester,
+                Timetable.status.in_([TimetableStatus.DRAFT, TimetableStatus.DELETED]),
+            )
+        )
+        for old_tt in old_tts.scalars().all():
+            await db.execute(
+                GlobalBooking.__table__.delete().where(
+                    GlobalBooking.timetable_entry_id.in_(
+                        select(TimetableEntry.entry_id).where(
+                            TimetableEntry.timetable_id == old_tt.timetable_id
+                        )
                     )
                 )
             )
+            await db.execute(
+                TimetableEntry.__table__.delete().where(
+                    TimetableEntry.timetable_id == old_tt.timetable_id
+                )
+            )
+            await db.delete(old_tt)
+        await db.flush()
+
+        timetable = Timetable(
+            timetable_id=str(uuid.uuid4()),
+            dept_id=dept_id,
+            semester=semester,
+            academic_year="2024-25",
+            status=TimetableStatus.DRAFT,
         )
-        await db.execute(
-            TimetableEntry.__table__.delete().where(
-                TimetableEntry.timetable_id == old_tt.timetable_id
+        db.add(timetable)
+        await db.commit()
+
+        # ── Run solver ────────────────────────────────────────────────────
+        result = await run_solver(
+            timetable_id=timetable.timetable_id,
+            db=db,
+            config={
+                "faculty_subject_map": faculty_subject_map,
+                "time_limit_seconds": 120,
+            },
+        )
+        last_result = result
+        solver_status = result.get("status", "UNKNOWN")
+
+        if solver_status in ("OPTIMAL", "FEASIBLE"):
+            break  # Success — exit loop
+
+        # ── INFEASIBLE — attempt auto-fix at DB level ─────────────────────
+        diagnosis = result.get("diagnosis", {})
+        last_diagnosis = diagnosis
+        diag_type = diagnosis.get("type", "UNKNOWN")
+
+        if attempt >= max_solver_attempts:
+            break  # Exhausted attempts
+
+        fixed_something = await _auto_fix_infeasibility(
+            diag_type, diagnosis, auto_fixes,
+            db, college_id, dept_id, semester,
+            subject_list, faculty_list, faculty_subject_map,
+            num_batches, _sub_load,
+        )
+        if not fixed_something:
+            break  # Nothing more we can fix
+
+        # Refresh subjects & rooms after DB changes
+        sub_result = await db.execute(
+            select(SubjectModel).where(
+                SubjectModel.dept_id == dept_id,
+                SubjectModel.semester == semester,
             )
         )
-        await db.delete(old_tt)
-    await db.flush()
+        subject_list = sub_result.scalars().all()
 
-    timetable = Timetable(
-        timetable_id=str(uuid.uuid4()),
-        dept_id=dept_id,
-        semester=semester,
-        academic_year="2024-25",
-        status=TimetableStatus.DRAFT,
-    )
-    db.add(timetable)
-    await db.commit()
-
-    # Step 4: Run solver
-    from core.scheduler.engine import generate_timetable as run_solver
-    result = await run_solver(
-        timetable_id=timetable.timetable_id,
-        db=db,
-        config={
-            "faculty_subject_map": faculty_subject_map,
-            "time_limit_seconds": 120,
-        },
-    )
-
+    # ── Handle final result ───────────────────────────────────────────────
+    result = last_result
     solver_status = result.get("status", "UNKNOWN")
 
     if solver_status in ("OPTIMAL", "FEASIBLE"):
-        # Step 5: AI post-generation analysis
+        # AI post-generation analysis
         post_analysis = await post_generation_analysis(timetable.timetable_id, db)
 
-        # Step 6: Auto-publish for seamless workflow
+        # Auto-publish for seamless workflow
         timetable.status = TimetableStatus.PUBLISHED
         timetable.published_at = datetime.now(timezone.utc)
         db.add(timetable)
@@ -447,10 +502,9 @@ async def handle_generate(
             },
         }
     else:
-        diagnosis = result.get("diagnosis", {})
+        diagnosis = result.get("diagnosis") or last_diagnosis or {}
         diag_msg = diagnosis.get("message", "Unknown issue")
 
-        # Ask LLM to explain the failure
         ai_explain = await llm.chat(
             f"Timetable generation failed for semester {semester}.\n"
             f"Status: {solver_status}\nDiagnosis: {diag_msg}\n"
@@ -473,6 +527,339 @@ async def handle_generate(
                 "pre_analysis": pre_analysis,
             },
         }
+
+
+# ── AUTO-FIX INFEASIBILITY ────────────────────────────────────────
+async def _auto_fix_infeasibility(
+    diag_type: str,
+    diagnosis: dict,
+    auto_fixes: list[str],
+    db: AsyncSession,
+    college_id: str,
+    dept_id: str,
+    semester: int,
+    subject_list: list,
+    faculty_list: list,
+    faculty_subject_map: dict[str, list[str]],
+    num_batches: int,
+    _sub_load,
+) -> bool:
+    """
+    Attempt to fix the root cause of an INFEASIBLE result by modifying
+    the database (rooms, subjects, faculty assignments).
+    Returns True if a fix was applied, False if nothing could be done.
+    """
+    from models.room import Room as RoomModel, RoomType
+    from models.batch import Batch as BatchModel
+
+    subject_by_id = {s.subject_id: s for s in subject_list}
+    faculty_by_id = {f.faculty_id: f for f in faculty_list}
+
+    # ── FIX: No valid lab with sufficient capacity ────────────────────────
+    if diag_type == "NO_VALID_LAB":
+        affected = diagnosis.get("affected_subject", "")
+        required_cap = diagnosis.get("required_capacity", 60)
+        available_labs = diagnosis.get("available_labs", [])
+
+        # Strategy 1: Find existing labs of matching category and upgrade capacity
+        sub = next((s for s in subject_list if s.name == affected), None)
+        if sub:
+            from core.scheduler.variables import _infer_subject_lab_needs
+            needed_categories = _infer_subject_lab_needs(sub.name)
+
+            # Find labs of matching category in DB
+            all_labs = (await db.execute(
+                select(RoomModel).where(
+                    RoomModel.college_id == college_id,
+                    RoomModel.room_type == RoomType.LAB,
+                )
+            )).scalars().all()
+
+            from core.scheduler.variables import _infer_lab_category
+            upgraded = False
+            for lab in all_labs:
+                cat = _infer_lab_category(lab.name)
+                if cat in needed_categories and lab.capacity < required_cap:
+                    old_cap = lab.capacity
+                    lab.capacity = required_cap
+                    db.add(lab)
+                    auto_fixes.append(
+                        f"Upgraded '{lab.name}' capacity: {old_cap} → {required_cap} seats"
+                    )
+                    upgraded = True
+                    break  # One upgrade is enough
+
+            if not upgraded:
+                # Strategy 2: Create a new lab room
+                lab_name = f"{affected} Lab"
+                new_lab = RoomModel(
+                    room_id=str(uuid.uuid4()),
+                    college_id=college_id,
+                    name=lab_name,
+                    capacity=required_cap,
+                    room_type=RoomType.LAB,
+                    has_projector=True,
+                    has_computers=True,
+                    has_ac=True,
+                )
+                db.add(new_lab)
+                auto_fixes.append(
+                    f"Created new lab '{lab_name}' with {required_cap} seats"
+                )
+
+            await db.commit()
+            return True
+
+    # ── FIX: Room capacity exceeded (theory classrooms) ───────────────────
+    if diag_type == "ROOM_CAPACITY_EXCEEDED":
+        affected = diagnosis.get("affected_subject", "")
+        required_cap = diagnosis.get("required_capacity", 60)
+
+        sub = next((s for s in subject_list if s.name == affected), None)
+        if sub:
+            # Find biggest classroom and upgrade it if needed
+            all_rooms = (await db.execute(
+                select(RoomModel).where(
+                    RoomModel.college_id == college_id,
+                    RoomModel.room_type == RoomType.CLASSROOM,
+                )
+            )).scalars().all()
+
+            if all_rooms:
+                biggest = max(all_rooms, key=lambda r: r.capacity)
+                if biggest.capacity < required_cap:
+                    old_cap = biggest.capacity
+                    biggest.capacity = required_cap
+                    db.add(biggest)
+                    auto_fixes.append(
+                        f"Upgraded '{biggest.name}' capacity: {old_cap} → {required_cap} seats"
+                    )
+                    await db.commit()
+                    return True
+
+    # ── FIX: Faculty overloaded ───────────────────────────────────────────
+    if diag_type == "FACULTY_OVERLOADED":
+        for fid, sids in list(faculty_subject_map.items()):
+            fac = faculty_by_id.get(fid)
+            if not fac or not fac.max_weekly_load:
+                continue
+            total = sum(
+                _sub_load(subject_by_id[s]) for s in sids if s in subject_by_id
+            )
+            if total <= fac.max_weekly_load:
+                continue
+            sids_sorted = sorted(
+                sids,
+                key=lambda s: _sub_load(subject_by_id[s]) if s in subject_by_id else 0,
+            )
+            while total > fac.max_weekly_load and sids_sorted:
+                move_sid = sids_sorted.pop(0)
+                sub = subject_by_id.get(move_sid)
+                if not sub:
+                    continue
+                s_load = _sub_load(sub)
+                best_target = min(
+                    (f for f in faculty_list if f.faculty_id != fid),
+                    key=lambda f: sum(
+                        _sub_load(subject_by_id[s])
+                        for s in faculty_subject_map.get(f.faculty_id, [])
+                        if s in subject_by_id
+                    ),
+                )
+                faculty_subject_map[fid] = [
+                    s for s in faculty_subject_map[fid] if s != move_sid
+                ]
+                faculty_subject_map.setdefault(best_target.faculty_id, []).append(
+                    move_sid
+                )
+                total -= s_load
+                auto_fixes.append(
+                    f"Moved '{sub.name}' from {fac.name} → {best_target.name}"
+                )
+        faculty_subject_map.update(
+            {k: v for k, v in faculty_subject_map.items() if v}
+        )
+        return True
+
+    # ── FIX: General block conflict ───────────────────────────────────────
+    if diag_type == "GENERAL_BLOCK_CONFLICT":
+        affected_name = diagnosis.get("affected_faculty", "")
+        fac = next((f for f in faculty_list if f.name == affected_name), None)
+        if fac:
+            from models.faculty import FacultyGeneralBlock
+            blocks = (await db.execute(
+                select(FacultyGeneralBlock).where(
+                    FacultyGeneralBlock.faculty_id == fac.faculty_id
+                )
+            )).scalars().all()
+            removed = min(len(blocks), 3)
+            for blk in blocks[:removed]:
+                await db.delete(blk)
+            if removed:
+                auto_fixes.append(
+                    f"Removed {removed} general block(s) for {fac.name}"
+                )
+                await db.commit()
+                return True
+
+    # ── FIX: Too many subjects / capacity insufficient ────────────────────
+    if diag_type == "TOO_MANY_SUBJECTS":
+        # Increase max_weekly_load for all faculty
+        for fac in faculty_list:
+            if fac.max_weekly_load and fac.max_weekly_load < 30:
+                old_load = fac.max_weekly_load
+                fac.max_weekly_load = min(old_load + 6, 30)
+                db.add(fac)
+                auto_fixes.append(
+                    f"Increased {fac.name}'s max weekly load: {old_load} → {fac.max_weekly_load}"
+                )
+        await db.commit()
+        return True
+
+    # ── FIX: Pre-solve failure (generic message-based detection) ──────────
+    if diag_type == "PRE_SOLVE_FAILURE":
+        msg = diagnosis.get("message", "").lower()
+        if "lab" in msg and "capacity" in msg or "no lab" in msg:
+            # Same as NO_VALID_LAB: scan for subjects needing labs
+            fixed = await _fix_all_lab_capacities(
+                db, college_id, subject_list, auto_fixes
+            )
+            if fixed:
+                return True
+        if "no room" in msg or "classroom" in msg:
+            fixed = await _fix_all_room_capacities(
+                db, college_id, subject_list, auto_fixes
+            )
+            if fixed:
+                return True
+
+    # ── Generic fallback: scan for ALL lab/room capacity mismatches ───────
+    if diag_type in ("UNKNOWN", "NO_VALID_LAB", "ROOM_CAPACITY_EXCEEDED"):
+        fixed_lab = await _fix_all_lab_capacities(
+            db, college_id, subject_list, auto_fixes
+        )
+        fixed_room = await _fix_all_room_capacities(
+            db, college_id, subject_list, auto_fixes
+        )
+        if fixed_lab or fixed_room:
+            return True
+
+    return False
+
+
+async def _fix_all_lab_capacities(
+    db: AsyncSession,
+    college_id: str,
+    subject_list: list,
+    auto_fixes: list[str],
+) -> bool:
+    """Scan ALL lab subjects and ensure at least one matching lab can fit them."""
+    from models.room import Room as RoomModel, RoomType
+    from core.scheduler.variables import _infer_subject_lab_needs, _infer_lab_category
+
+    lab_subjects = [s for s in subject_list if s.needs_lab and s.lab_hours > 0]
+    if not lab_subjects:
+        return False
+
+    all_labs = (await db.execute(
+        select(RoomModel).where(
+            RoomModel.college_id == college_id,
+            RoomModel.room_type == RoomType.LAB,
+        )
+    )).scalars().all()
+
+    lab_categories = {lab.room_id: _infer_lab_category(lab.name) for lab in all_labs}
+    fixed = False
+
+    for sub in lab_subjects:
+        needed_cats = _infer_subject_lab_needs(sub.name)
+        matching_labs = [
+            lab for lab in all_labs
+            if lab_categories.get(lab.room_id) in needed_cats
+        ]
+        valid_labs = [lab for lab in matching_labs if lab.capacity >= sub.batch_size]
+
+        if valid_labs:
+            continue  # This subject is fine
+
+        if matching_labs:
+            # Upgrade the biggest matching lab
+            biggest = max(matching_labs, key=lambda r: r.capacity)
+            old_cap = biggest.capacity
+            biggest.capacity = sub.batch_size
+            db.add(biggest)
+            auto_fixes.append(
+                f"Upgraded '{biggest.name}' capacity: {old_cap} → {sub.batch_size} "
+                f"(needed for '{sub.name}')"
+            )
+            fixed = True
+        else:
+            # Create a new lab
+            lab_name = f"{sub.name} Lab"
+            new_lab = RoomModel(
+                room_id=str(uuid.uuid4()),
+                college_id=college_id,
+                name=lab_name,
+                capacity=sub.batch_size,
+                room_type=RoomType.LAB,
+                has_projector=True, has_computers=True, has_ac=True,
+            )
+            db.add(new_lab)
+            all_labs.append(new_lab)
+            lab_categories[new_lab.room_id] = _infer_lab_category(lab_name)
+            auto_fixes.append(
+                f"Created new lab '{lab_name}' with {sub.batch_size} seats"
+            )
+            fixed = True
+
+    if fixed:
+        await db.commit()
+    return fixed
+
+
+async def _fix_all_room_capacities(
+    db: AsyncSession,
+    college_id: str,
+    subject_list: list,
+    auto_fixes: list[str],
+) -> bool:
+    """Ensure every theory subject has at least one classroom that fits."""
+    from models.room import Room as RoomModel, RoomType
+
+    theory_subjects = [
+        s for s in subject_list
+        if (s.lecture_hours if s.lecture_hours else s.weekly_periods) > 0
+    ]
+    if not theory_subjects:
+        return False
+
+    all_classrooms = (await db.execute(
+        select(RoomModel).where(
+            RoomModel.college_id == college_id,
+            RoomModel.room_type == RoomType.CLASSROOM,
+        )
+    )).scalars().all()
+
+    fixed = False
+    for sub in theory_subjects:
+        valid = [r for r in all_classrooms if r.capacity >= sub.batch_size]
+        if valid:
+            continue
+        if all_classrooms:
+            biggest = max(all_classrooms, key=lambda r: r.capacity)
+            if biggest.capacity < sub.batch_size:
+                old_cap = biggest.capacity
+                biggest.capacity = sub.batch_size
+                db.add(biggest)
+                auto_fixes.append(
+                    f"Upgraded '{biggest.name}' capacity: {old_cap} → {sub.batch_size} "
+                    f"(needed for '{sub.name}')"
+                )
+                fixed = True
+
+    if fixed:
+        await db.commit()
+    return fixed
 
 
 # ── PUBLISH ───────────────────────────────────────────────────────
