@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Bot,
   Send,
   User,
   Loader2,
@@ -14,7 +13,6 @@ import {
   BarChart3,
   Calendar,
   X,
-  MessageSquare,
   Download,
   Eye,
   Wrench,
@@ -340,7 +338,7 @@ export function ChatPanel() {
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-xl flex items-center justify-center",
+          "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-xl flex items-center justify-center overflow-hidden",
           "transition-all duration-300 ease-out hover:shadow-2xl",
           open
             ? "bg-muted text-muted-foreground hover:bg-accent rotate-0"
@@ -348,10 +346,10 @@ export function ChatPanel() {
         )}
         title={open ? "Close assistant" : "Open AI assistant"}
       >
-        <div className="relative">
-          <MessageSquare className={cn(
-            "h-6 w-6 absolute inset-0 transition-all duration-300",
-            open ? "opacity-0 rotate-90 scale-0" : "opacity-100 rotate-0 scale-100",
+        <div className="relative h-6 w-6">
+          <img src="/chatbot-logo.png" alt="AI" className={cn(
+            "absolute inset-0 h-full w-full object-contain scale-[2.4] transition-all duration-300",
+            open ? "opacity-0 rotate-90 scale-0" : "opacity-100 rotate-0 scale-[2.4]",
           )} />
           <X className={cn(
             "h-6 w-6 transition-all duration-300",
@@ -377,8 +375,8 @@ export function ChatPanel() {
       >
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0">
-          <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center">
-            <Bot className="w-4 h-4 text-primary" />
+          <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+            <img src="/chatbot-logo.png" alt="AI" className="w-6 h-6 object-contain" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold leading-tight">TimetableAI</p>
@@ -404,8 +402,8 @@ export function ChatPanel() {
                 )}
               >
                 {msg.role === "assistant" && (
-                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
-                    <Bot className="w-3 h-3 text-primary" />
+                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5 overflow-hidden">
+                    <img src="/chatbot-logo.png" alt="AI" className="w-5 h-5 object-contain" />
                   </div>
                 )}
                 <div
@@ -446,8 +444,8 @@ export function ChatPanel() {
 
             {loading && (
               <div className="flex gap-2 justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Bot className="w-3 h-3 text-primary" />
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                  <img src="/chatbot-logo.png" alt="AI" className="w-5 h-5 object-contain" />
                 </div>
                 <div className="bg-muted rounded-2xl px-4 py-2.5 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />

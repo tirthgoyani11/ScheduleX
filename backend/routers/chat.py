@@ -6,7 +6,7 @@ from schemas.chat import ChatRequest, ChatResponse
 from core.chatbot.intent import classify_intent
 from core.chatbot.handlers import (
     handle_query, handle_absence, handle_explain, handle_smalltalk,
-    handle_generate, handle_publish, handle_export,
+    handle_generate, handle_publish, handle_export, handle_reschedule,
 )
 from core.chatbot.generation_advisor import (
     pre_generation_analysis, post_generation_analysis, ai_suggest_assignments,
@@ -52,6 +52,14 @@ async def chat_message(
             intent=intent,
             confidence=confidence,
             data=exp_result.get("data"),
+        )
+    elif intent == "RESCHEDULE":
+        res_result = await handle_reschedule(body.message, entities, db, college_id, dept_id)
+        return ChatResponse(
+            reply=res_result["reply"],
+            intent=intent,
+            confidence=confidence,
+            data=res_result.get("data"),
         )
     elif intent in ("QUERY", "EXAM"):
         reply = await handle_query(body.message, entities, db, college_id, dept_id)

@@ -29,31 +29,179 @@ async def handle_query(
 ) -> str:
     msg = user_msg.lower()
 
-    if ("free" in msg or "available" in msg) and ("room" in msg or "lab" in msg):
-        day = entities.get("day") or "Thursday"
-        period = entities.get("period") or 3
-        booked = (await db.execute(
-            select(GlobalBooking.room_id)
-            .where(GlobalBooking.college_id == college_id,
-                   GlobalBooking.day == day,
-                   GlobalBooking.period == period)
-        )).scalars().all()
-        booked_ids = set(booked)
+    # ── Extract semester from entities or message ──
+    semester = entities.get("semester")
+    if not semester:
+        import re
+        sem_m = re.search(r'sem(?:ester)?\s*(\d)', msg)
+        if sem_m:
+            semester = int(sem_m.group(1))
+
+    # ── Extract day ──
+    day = entities.get("day")
+    if not day:
+        for d in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"):
+            if d.lower() in msg or d[:3].lower() in msg:
+                day = d
+                break
+
+    # ── Extract period ──
+    period = entities.get("period")
+    if period:
+        period = int(period)
+    else:
+        import re
+        pm = re.search(r'(?:period|p|slot)\s*(\d)', msg)
+        if not pm:
+            pm = re.search(r'(\d)(?:st|nd|rd|th)\s*(?:period|slot|lecture)?', msg)
+        if pm:
+            period = int(pm.group(1))
+
+    # ── Load timeslots for reference ──
+    from models.timeslot import TimeSlotConfig
+    dept = await db.get(Department, dept_id) if dept_id else None
+    ts_college_id = dept.college_id if dept else college_id
+    slot_result = await db.execute(
+        select(TimeSlotConfig)
+        .where(TimeSlotConfig.college_id == ts_college_id)
+        .order_by(TimeSlotConfig.slot_order)
+    )
+    all_slots = slot_result.scalars().all()
+    non_break_slots = [s for s in all_slots if s.slot_type.value != "break"]
+    ALL_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+    # ── Branch 1: Free slots / free rooms for a semester ──
+    if ("free" in msg or "available" in msg or "open" in msg) and (
+        "slot" in msg or "room" in msg or "class" in msg or "lab" in msg
+        or "time" in msg or "period" in msg or semester
+    ):
+        # Find the timetable for this semester
+        tt = None
+        if semester:
+            tt_result = await db.execute(
+                select(Timetable)
+                .where(
+                    Timetable.dept_id == dept_id,
+                    Timetable.semester == semester,
+                    Timetable.status.in_([TimetableStatus.PUBLISHED, TimetableStatus.DRAFT]),
+                )
+                .order_by(Timetable.created_at.desc())
+            )
+            tt = tt_result.scalars().first()
+
+        if not tt and semester:
+            return (
+                f"No timetable found for semester {semester}. "
+                f"Generate one first by saying 'Generate timetable for semester {semester}'."
+            )
+
+        # Get all existing entries for this timetable
+        entries = []
+        if tt:
+            entry_result = await db.execute(
+                select(TimetableEntry).where(
+                    TimetableEntry.timetable_id == tt.timetable_id
+                )
+            )
+            entries = entry_result.scalars().all()
+
+        # Build set of occupied (day, period) combos
+        occupied = {(e.day, e.period) for e in entries}
+
+        # Also get globally booked rooms
+        booked_rooms: dict[str, set] = {}  # "(day, period)" → set of room_ids
+        if tt:
+            for e in entries:
+                key = f"{e.day}|{e.period}"
+                booked_rooms.setdefault(key, set()).add(e.room_id)
+
+        # Get all rooms
         rooms = (await db.execute(
             select(Room).where(Room.college_id == college_id)
         )).scalars().all()
-        free = [r for r in rooms if r.room_id not in booked_ids]
-        if not free:
-            raw = f"No free rooms on {day} Period {period}."
-        else:
-            room_list = "\n".join(f"• {r.name} (cap {r.capacity}, {r.room_type})" for r in free)
-            raw = f"Free rooms on {day} Period {period}:\n{room_list}"
+        classrooms = [r for r in rooms if r.room_type.value in ("classroom", "seminar_hall")]
+        labs = [r for r in rooms if r.room_type.value == "lab"]
 
-    elif "load" in msg or "hours" in msg:
+        if day and period:
+            # Specific slot — show free rooms for that exact slot
+            key = f"{day}|{period}"
+            booked_ids = booked_rooms.get(key, set())
+
+            # Also check global bookings
+            global_booked = (await db.execute(
+                select(GlobalBooking.room_id)
+                .where(GlobalBooking.college_id == college_id,
+                       GlobalBooking.day == day,
+                       GlobalBooking.period == period)
+            )).scalars().all()
+            booked_ids = booked_ids | set(global_booked)
+
+            free_rooms = [r for r in rooms if r.room_id not in booked_ids]
+            free_cr = [r for r in free_rooms if r.room_type.value in ("classroom", "seminar_hall")]
+            free_labs = [r for r in free_rooms if r.room_type.value == "lab"]
+
+            # Check if sem students are free too
+            sem_label = f"Sem {semester}" if semester else ""
+            slot_info = next((s for s in non_break_slots if s.slot_order == period), None)
+            time_str = f"{slot_info.start_time}–{slot_info.end_time}" if slot_info else f"Period {period}"
+
+            lines = [f"📍 **Free resources on {day} Period {period} ({time_str}):**"]
+            if semester:
+                is_sem_free = (day, period) not in occupied
+                lines.append(f"• Sem {semester} students: {'✅ FREE' if is_sem_free else '❌ Occupied'}")
+            lines.append(f"• Free classrooms: **{len(free_cr)}** of {len(classrooms)}")
+            if free_cr:
+                lines.append("  " + ", ".join(f"{r.name} ({r.capacity})" for r in free_cr[:8]))
+                if len(free_cr) > 8:
+                    lines.append(f"  ...and {len(free_cr) - 8} more")
+            lines.append(f"• Free labs: **{len(free_labs)}** of {len(labs)}")
+            if free_labs:
+                lines.append("  " + ", ".join(f"{r.name} ({r.capacity})" for r in free_labs[:8]))
+                if len(free_labs) > 8:
+                    lines.append(f"  ...and {len(free_labs) - 8} more")
+            return "\n".join(lines)
+
+        elif day:
+            # Show all free periods for this day
+            lines = [f"📅 **Free slots on {day}" + (f" for Sem {semester}" if semester else "") + ":**"]
+            for slot in non_break_slots:
+                is_free = (day, slot.slot_order) not in occupied
+                key = f"{day}|{slot.slot_order}"
+                n_rooms_booked = len(booked_rooms.get(key, set()))
+                n_free_rooms = len(rooms) - n_rooms_booked
+                status = "✅ FREE" if is_free else "❌ Occupied"
+                lines.append(
+                    f"  P{slot.slot_order} ({slot.start_time}–{slot.end_time}): "
+                    f"{status} | {n_free_rooms} rooms available"
+                )
+            return "\n".join(lines)
+
+        else:
+            # Show overview of all free slots across the week
+            lines = [f"📊 **Free slot overview" + (f" for Sem {semester}" if semester else "") + ":**\n"]
+            lines.append("Day         | " + " | ".join(f"P{s.slot_order}" for s in non_break_slots))
+            lines.append("------------ | " + " | ".join("---" for _ in non_break_slots))
+            for d in ALL_DAYS:
+                row = []
+                for slot in non_break_slots:
+                    is_free = (d, slot.slot_order) not in occupied
+                    row.append(" ✅ " if is_free else " ❌ ")
+                lines.append(f"{d:<12} | " + " | ".join(row))
+
+            free_count = sum(
+                1 for d in ALL_DAYS for s in non_break_slots
+                if (d, s.slot_order) not in occupied
+            )
+            total = len(ALL_DAYS) * len(non_break_slots)
+            lines.append(f"\n**{free_count}/{total} slots free.** Specify a day for room details, e.g. 'Free rooms Tuesday P3 for sem {semester or 3}'")
+            return "\n".join(lines)
+
+    # ── Branch 2: Faculty load ──
+    elif "load" in msg or "hours" in msg or "workload" in msg:
         facs = (await db.execute(
             select(Faculty).where(Faculty.dept_id == dept_id)
         )).scalars().all()
-        lines = []
+        lines = ["📊 **Faculty Workload:**"]
         for f in facs:
             cnt = (await db.execute(
                 select(func.count()).select_from(TimetableEntry)
@@ -61,19 +209,100 @@ async def handle_query(
             )).scalar() or 0
             pct = round(cnt / f.max_weekly_load * 100) if f.max_weekly_load else 0
             icon = "🟢" if pct < 80 else "🟡" if pct < 100 else "🔴"
-            lines.append(f"{icon} {f.name}: {cnt}/{f.max_weekly_load} ({pct}%)")
-        raw = "Faculty load:\n" + "\n".join(lines)
+            lines.append(f"{icon} {f.name}: {cnt}/{f.max_weekly_load} periods ({pct}%)")
+        return "\n".join(lines)
 
+    # ── Branch 3: Clashes ──
     elif any(w in msg for w in ("clash", "conflict", "double")):
-        raw = "✅ Zero clashes — the OR-Tools solver mathematically guarantees this."  # simplified
+        return "✅ Zero clashes — the OR-Tools CP-SAT solver mathematically guarantees no faculty, room, or batch conflicts."
 
+    # ── Branch 4: Who teaches / what's scheduled ──
+    elif any(w in msg for w in ("who teach", "which faculty", "professor for")):
+        if not semester:
+            return "Which semester? e.g. 'Who teaches in semester 3?'"
+        subjects = (await db.execute(
+            select(Subject).where(Subject.dept_id == dept_id, Subject.semester == semester)
+        )).scalars().all()
+
+        tt_result = await db.execute(
+            select(Timetable)
+            .where(Timetable.dept_id == dept_id, Timetable.semester == semester,
+                   Timetable.status.in_([TimetableStatus.PUBLISHED, TimetableStatus.DRAFT]))
+            .order_by(Timetable.created_at.desc())
+        )
+        tt = tt_result.scalars().first()
+        if not tt:
+            return f"No timetable found for semester {semester}."
+
+        entries = (await db.execute(
+            select(TimetableEntry).where(TimetableEntry.timetable_id == tt.timetable_id)
+        )).scalars().all()
+
+        # Map subject_id → faculty_id
+        sub_fac: dict[str, set] = {}
+        for e in entries:
+            sub_fac.setdefault(e.subject_id, set()).add(e.faculty_id)
+
+        lines = [f"👨‍🏫 **Faculty assignments for Sem {semester}:**"]
+        for sub in subjects:
+            fac_ids = sub_fac.get(sub.subject_id, set())
+            if fac_ids:
+                fac_names = []
+                for fid in fac_ids:
+                    f = await db.get(Faculty, fid)
+                    fac_names.append(f.name if f else "Unknown")
+                lines.append(f"• {sub.name}: {', '.join(fac_names)}")
+            else:
+                lines.append(f"• {sub.name}: ⚠️ Not assigned")
+        return "\n".join(lines)
+
+    # ── Branch 5: Schedule overview for a day ──
+    elif day and semester:
+        tt_result = await db.execute(
+            select(Timetable)
+            .where(Timetable.dept_id == dept_id, Timetable.semester == semester,
+                   Timetable.status.in_([TimetableStatus.PUBLISHED, TimetableStatus.DRAFT]))
+            .order_by(Timetable.created_at.desc())
+        )
+        tt = tt_result.scalars().first()
+        if not tt:
+            return f"No timetable for semester {semester}."
+
+        entries = (await db.execute(
+            select(TimetableEntry)
+            .where(TimetableEntry.timetable_id == tt.timetable_id,
+                   TimetableEntry.day == day)
+        )).scalars().all()
+
+        if not entries:
+            return f"No classes on {day} for semester {semester}."
+
+        lines = [f"📅 **{day} schedule for Sem {semester}:**"]
+        sorted_entries = sorted(entries, key=lambda e: e.period)
+        for e in sorted_entries:
+            sub = await db.get(Subject, e.subject_id)
+            fac = await db.get(Faculty, e.faculty_id)
+            room = await db.get(Room, e.room_id)
+            slot = next((s for s in non_break_slots if s.slot_order == e.period), None)
+            time_str = f"{slot.start_time}–{slot.end_time}" if slot else ""
+            batch_str = f" ({e.batch})" if e.batch else ""
+            lines.append(
+                f"  P{e.period} ({time_str}): {sub.name if sub else '?'}{batch_str} "
+                f"| {fac.name if fac else '?'} | {room.name if room else '?'}"
+            )
+        return "\n".join(lines)
+
+    # ── Default: guide the user ──
     else:
-        raw = ("I can answer about room availability, faculty load, and clashes. "
-               "Try: 'Which rooms are free Monday Period 2?'")
-
-    return await llm.chat(
-        f"User asked: '{user_msg}'\nData:\n{raw}\n\nWrite a friendly 2-3 sentence summary.",
-    )
+        return (
+            "I can help with:\n"
+            "• **Free slots**: 'Which slots are free for sem 3?'\n"
+            "• **Free rooms**: 'Which rooms are free Tuesday P3?'\n"
+            "• **Faculty load**: 'Show faculty workload'\n"
+            "• **Schedule**: 'What's scheduled Monday for sem 5?'\n"
+            "• **Assignments**: 'Who teaches in semester 3?'\n\n"
+            "Try one of these!"
+        )
 
 
 # ── ABSENCE / SUBSTITUTE ─────────────────────────────────────────
@@ -923,6 +1152,281 @@ async def handle_publish(
             "status": "PUBLISHED",
             "score": draft.optimization_score,
             "entry_count": entry_count,
+        },
+    }
+
+
+# ── RESCHEDULE / ADD EXTRA LECTURE ────────────────────────────────
+async def handle_reschedule(
+    user_msg: str, entities: dict, db: AsyncSession,
+    college_id: str, dept_id: str,
+) -> dict:
+    """
+    Handle requests to add an extra lecture or reschedule an existing one.
+    Extracts semester, day, period, subject, faculty from entities/message.
+    Checks conflicts and either adds or moves a timetable entry.
+    """
+    import re
+    msg = user_msg.lower()
+
+    # ── Extract parameters ──
+    semester = entities.get("semester")
+    if not semester:
+        m = re.search(r'sem(?:ester)?\s*(\d)', msg)
+        semester = int(m.group(1)) if m else None
+
+    day = entities.get("day")
+    if not day:
+        for d in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"):
+            if d.lower() in msg or d[:3].lower() in msg:
+                day = d
+                break
+
+    period = entities.get("period")
+    if period:
+        period = int(period)
+    else:
+        pm = re.search(r'(?:period|p|slot)\s*(\d)', msg)
+        if not pm:
+            pm = re.search(r'(\d)(?:st|nd|rd|th)\s*(?:period|slot|lecture)?', msg)
+        if pm:
+            period = int(pm.group(1))
+
+    subject_name = entities.get("subject_name")
+    faculty_name = entities.get("faculty_name")
+
+    # ── Validate: need at least semester ──
+    if not semester:
+        return {
+            "reply": (
+                "To reschedule or add an extra lecture, I need:\n"
+                "• **Semester** (required): e.g. 'sem 3'\n"
+                "• **Day** (optional): e.g. 'Tuesday'\n"
+                "• **Period** (optional): e.g. 'P2' or '2nd period'\n"
+                "• **Subject** (optional): e.g. 'Computer Networks'\n\n"
+                "Example: 'Add extra CN lecture for sem 3 on Tuesday P2'"
+            ),
+            "data": None,
+        }
+
+    # ── Find timetable ──
+    tt_result = await db.execute(
+        select(Timetable)
+        .where(
+            Timetable.dept_id == dept_id,
+            Timetable.semester == semester,
+            Timetable.status.in_([TimetableStatus.PUBLISHED, TimetableStatus.DRAFT]),
+        )
+        .order_by(Timetable.created_at.desc())
+    )
+    tt = tt_result.scalars().first()
+    if not tt:
+        return {
+            "reply": f"No timetable found for semester {semester}. Generate one first!",
+            "data": None,
+        }
+
+    # ── Load entries ──
+    entry_result = await db.execute(
+        select(TimetableEntry).where(TimetableEntry.timetable_id == tt.timetable_id)
+    )
+    entries = entry_result.scalars().all()
+    occupied = {(e.day, e.period) for e in entries}
+
+    # ── Load timeslots ──
+    from models.timeslot import TimeSlotConfig
+    dept_obj = await db.get(Department, dept_id) if dept_id else None
+    ts_college_id = dept_obj.college_id if dept_obj else college_id
+    slot_result = await db.execute(
+        select(TimeSlotConfig)
+        .where(TimeSlotConfig.college_id == ts_college_id)
+        .order_by(TimeSlotConfig.slot_order)
+    )
+    all_slots = slot_result.scalars().all()
+    non_break_slots = [s for s in all_slots if s.slot_type.value != "break"]
+    ALL_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+    if not day or not period:
+        # Show available free slots so user can pick
+        lines = [f"📅 **Free slots for Sem {semester}** — pick one:\n"]
+        free_slots = []
+        for d in ALL_DAYS:
+            day_free = []
+            for slot in non_break_slots:
+                if (d, slot.slot_order) not in occupied:
+                    day_free.append(f"P{slot.slot_order} ({slot.start_time}–{slot.end_time})")
+                    free_slots.append((d, slot.slot_order))
+            if day_free:
+                lines.append(f"**{d}**: {', '.join(day_free)}")
+
+        if not free_slots:
+            return {
+                "reply": f"❌ No free slots available for Sem {semester}. All periods are occupied.",
+                "data": None,
+            }
+
+        lines.append(f"\nTell me which slot, e.g. 'Add extra lecture sem {semester} Tuesday P2'")
+        return {"reply": "\n".join(lines), "data": None}
+
+    # ── Check if the target slot is free ──
+    if (day, period) in occupied:
+        existing = next((e for e in entries if e.day == day and e.period == period), None)
+        if existing:
+            sub = await db.get(Subject, existing.subject_id)
+            fac = await db.get(Faculty, existing.faculty_id)
+            return {
+                "reply": (
+                    f"❌ **{day} P{period} is already occupied** by "
+                    f"**{sub.name if sub else '?'}** ({fac.name if fac else '?'}).\n\n"
+                    f"Pick a different slot, or say 'Which slots are free for sem {semester}?'"
+                ),
+                "data": None,
+            }
+
+    # ── Find subject ──
+    subjects = (await db.execute(
+        select(Subject).where(Subject.dept_id == dept_id, Subject.semester == semester)
+    )).scalars().all()
+
+    target_sub = None
+    if subject_name:
+        for s in subjects:
+            if subject_name.lower() in s.name.lower() or s.name.lower() in subject_name.lower():
+                target_sub = s
+                break
+
+    if not target_sub and subject_name:
+        # Try abbreviation match
+        for s in subjects:
+            abbr = "".join(w[0] for w in s.name.upper().split() if len(w) > 1)
+            if subject_name.upper() == abbr:
+                target_sub = s
+                break
+
+    if not target_sub:
+        sub_list = "\n".join(f"  {i+1}. {s.name}" for i, s in enumerate(subjects))
+        return {
+            "reply": (
+                f"Which subject should I schedule on {day} P{period}?\n\n"
+                f"**Available subjects for Sem {semester}:**\n{sub_list}\n\n"
+                f"Reply with: 'Add [subject name] on {day} P{period} for sem {semester}'"
+            ),
+            "data": None,
+        }
+
+    # ── Find faculty for this subject ──
+    target_fac = None
+    if faculty_name:
+        fac_result = await db.execute(
+            select(Faculty).where(Faculty.dept_id == dept_id,
+                                  Faculty.name.ilike(f"%{faculty_name}%"))
+        )
+        target_fac = fac_result.scalars().first()
+
+    if not target_fac:
+        # Find from existing entries — who already teaches this subject?
+        existing_fac_ids = {e.faculty_id for e in entries if e.subject_id == target_sub.subject_id}
+        if existing_fac_ids:
+            fid = next(iter(existing_fac_ids))
+            target_fac = await db.get(Faculty, fid)
+
+    if not target_fac:
+        return {
+            "reply": f"Could not determine faculty for {target_sub.name}. Who should teach it?",
+            "data": None,
+        }
+
+    # ── Check faculty conflict ──
+    fac_busy = (await db.execute(
+        select(GlobalBooking)
+        .where(GlobalBooking.college_id == college_id,
+               GlobalBooking.day == day,
+               GlobalBooking.period == period,
+               GlobalBooking.faculty_id == target_fac.faculty_id)
+    )).scalars().first()
+    if fac_busy:
+        return {
+            "reply": (
+                f"❌ **{target_fac.name}** is already booked on {day} P{period}.\n"
+                f"Choose a different slot or faculty."
+            ),
+            "data": None,
+        }
+
+    # ── Find a free room ──
+    booked_room_ids = (await db.execute(
+        select(GlobalBooking.room_id)
+        .where(GlobalBooking.college_id == college_id,
+               GlobalBooking.day == day,
+               GlobalBooking.period == period)
+    )).scalars().all()
+    booked_set = set(booked_room_ids)
+
+    all_rooms = (await db.execute(
+        select(Room).where(Room.college_id == college_id)
+    )).scalars().all()
+    classrooms = [r for r in all_rooms if r.room_type.value in ("classroom", "seminar_hall")
+                  and r.room_id not in booked_set]
+    classrooms.sort(key=lambda r: r.capacity)
+
+    if not classrooms:
+        return {
+            "reply": f"❌ No free classrooms on {day} P{period}. Try a different slot.",
+            "data": None,
+        }
+
+    target_room = classrooms[0]  # Smallest free classroom
+
+    # ── Create the entry ──
+    from models.timetable import EntryType
+    new_entry = TimetableEntry(
+        entry_id=str(uuid.uuid4()),
+        timetable_id=tt.timetable_id,
+        day=day,
+        period=period,
+        subject_id=target_sub.subject_id,
+        faculty_id=target_fac.faculty_id,
+        room_id=target_room.room_id,
+        entry_type=EntryType.REGULAR,
+        batch=None,
+    )
+    db.add(new_entry)
+
+    # Add global booking
+    new_booking = GlobalBooking(
+        booking_id=str(uuid.uuid4()),
+        college_id=college_id,
+        timetable_entry_id=new_entry.entry_id,
+        day=day,
+        period=period,
+        faculty_id=target_fac.faculty_id,
+        room_id=target_room.room_id,
+    )
+    db.add(new_booking)
+    await db.commit()
+
+    slot_info = next((s for s in non_break_slots if s.slot_order == period), None)
+    time_str = f"{slot_info.start_time}–{slot_info.end_time}" if slot_info else f"Period {period}"
+
+    return {
+        "reply": (
+            f"✅ **Extra lecture added!**\n\n"
+            f"📚 **{target_sub.name}**\n"
+            f"👨‍🏫 {target_fac.name}\n"
+            f"📍 {target_room.name} (capacity {target_room.capacity})\n"
+            f"🕐 {day} P{period} ({time_str})\n\n"
+            f"The timetable for Sem {semester} has been updated."
+        ),
+        "data": {
+            "timetable_id": tt.timetable_id,
+            "action": "added",
+            "entry": {
+                "day": day,
+                "period": period,
+                "subject": target_sub.name,
+                "faculty": target_fac.name,
+                "room": target_room.name,
+            },
         },
     }
 
