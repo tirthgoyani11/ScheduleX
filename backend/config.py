@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     SUBSTITUTION_TIMEOUT_MINUTES: int = 10
     SUBSTITUTION_MAX_ESCALATIONS: int = 3
 
+    # ── NVIDIA NIM (Kimi K2.5) ──────────────────────────────
+    NVIDIA_API_KEY: str = ""
+    NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
+    NVIDIA_MODEL: str = "moonshotai/kimi-k2-instruct"
+
     # ── WeasyPrint ───────────────────────────────────────────
     PDF_OUTPUT_DIR: str = "./generated_pdfs"
 
