@@ -82,23 +82,26 @@ if result["status"] in ("OPTIMAL", "FEASIBLE"):
     theory_entries = [e for e in entries if e["batch"] is None]
     print(f"\nTheory entries: {len(theory_entries)}, Lab entries: {len(lab_entries)}")
     
-    # Check contiguity: group lab entries by (subject, batch, day)
+    # Check contiguity AND same-room: group lab entries by (subject, batch, day)
     from collections import defaultdict
     lab_groups = defaultdict(list)
     for e in lab_entries:
         key = (e["subject_name"], e["batch"], e["day"])
-        lab_groups[key].append(e["period"])
+        lab_groups[key].append(e)
     
-    print("\nLab blocks (should be 2 consecutive periods each):")
+    print("\nLab blocks (should be 2 consecutive periods, SAME room):")
     all_ok = True
-    for (subj, batch, day), periods in sorted(lab_groups.items()):
-        periods.sort()
+    for (subj, batch, day), ents in sorted(lab_groups.items()):
+        ents.sort(key=lambda x: x["period"])
+        periods = [e["period"] for e in ents]
+        rooms = [e["room_name"] for e in ents]
         contiguous = len(periods) == 2 and periods[1] == periods[0] + 1
-        status = "OK" if contiguous else "FAIL"
-        if not contiguous:
+        same_room = len(set(rooms)) == 1
+        status = "OK" if (contiguous and same_room) else "FAIL"
+        if not (contiguous and same_room):
             all_ok = False
-        print(f"  {subj} Batch-{batch} {day}: periods {periods} [{status}]")
+        print(f"  {subj} Batch-{batch} {day}: periods {periods} rooms {rooms} [{status}]")
     
-    print(f"\n{'ALL LABS CONTIGUOUS' if all_ok else 'SOME LABS NOT CONTIGUOUS!'}")
+    print(f"\n{'ALL LABS CONTIGUOUS + SAME ROOM' if all_ok else 'SOME LABS HAVE ISSUES!'}")
 else:
     print("Diagnosis:", result.get("diagnosis"))

@@ -83,6 +83,7 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
     by_lab_subject_slot: dict[tuple, list] = defaultdict(list)
     by_lab_slot: dict[tuple, list] = defaultdict(list)
     by_lab_sfb_day_period: dict[tuple, list] = defaultdict(list)  # (sid,fid,bid,day,period) → [var]
+    by_lab_sfb_day_period_room: dict[tuple, cp_model.IntVar] = {}  # (sid,fid,bid,day,period,rid) → var
 
     theory_count = 0
     lab_count = 0
@@ -165,6 +166,7 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
                                 by_lab_subject_slot[(sid, day, period)].append(var)
                                 by_lab_slot[(day, period)].append(var)
                                 by_lab_sfb_day_period[(sid, fid, bid, day, period)].append(var)
+                                by_lab_sfb_day_period_room[(sid, fid, bid, day, period, rid)] = var
 
                                 lab_count += 1
 
@@ -197,6 +199,7 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
         "by_lab_subject_slot": dict(by_lab_subject_slot),
         "by_lab_slot": dict(by_lab_slot),
         "by_lab_sfb_day_period": dict(by_lab_sfb_day_period),
+        "by_lab_sfb_day_period_room": by_lab_sfb_day_period_room,
         # meta
         "lecture_periods": lecture_periods,
         "lab_periods": lab_periods,
