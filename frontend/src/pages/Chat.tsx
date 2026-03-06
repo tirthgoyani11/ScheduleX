@@ -5,7 +5,17 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PageHeader } from "@/components/common/PageHeader";
-import { Bot, Send, User, Loader2, Sparkles } from "lucide-react";
+import {
+  Bot,
+  Send,
+  User,
+  Loader2,
+  Sparkles,
+  CheckCircle2,
+  XCircle,
+  BarChart3,
+  Calendar,
+} from "lucide-react";
 import { api } from "@/lib/api-client";
 
 interface ChatMessage {
@@ -15,6 +25,7 @@ interface ChatMessage {
   intent?: string;
   confidence?: number;
   timestamp: Date;
+  data?: Record<string, unknown> | null;
 }
 
 interface ChatApiResponse {
@@ -27,10 +38,51 @@ interface ChatApiResponse {
 const QUICK_ACTIONS = [
   "Which rooms are free Monday Period 2?",
   "Show faculty load distribution",
+  "Generate timetable for semester 3",
   "Prof. Patel is absent Period 3, who can substitute?",
-  "Why was this timetable generated this way?",
-  "Any clashes in the current schedule?",
+  "Publish the timetable",
+  "Suggest best faculty assignments for semester 3",
 ];
+
+function GenerationCard({ data }: { data: Record<string, unknown> }) {
+  const score = data.score as number;
+  const entryCount = data.entry_count as number;
+  const wallTime = data.wall_time as number;
+  const status = data.status as string;
+  const timetableId = data.timetable_id as string;
+
+  return (
+    <div className="mt-3 p-3 rounded-lg bg-background border space-y-2">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        {status === "OPTIMAL" || status === "FEASIBLE" ? (
+          <CheckCircle2 className="w-4 h-4 text-green-500" />
+        ) : (
+          <XCircle className="w-4 h-4 text-red-500" />
+        )}
+        Timetable {status}
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1">
+          <BarChart3 className="w-3 h-3" />
+          Score: {score ?? 0}%
+        </div>
+        <div className="flex items-center gap-1">
+          <Calendar className="w-3 h-3" />
+          {entryCount ?? 0} entries
+        </div>
+        <div>Time: {wallTime ?? 0}s</div>
+      </div>
+      {timetableId && (
+        <a
+          href={`/timetable`}
+          className="text-xs text-primary underline hover:no-underline"
+        >
+          View Timetable →
+        </a>
+      )}
+    </div>
+  );
+}
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -73,6 +125,7 @@ export default function ChatPage() {
         text: res.reply,
         intent: res.intent,
         confidence: res.confidence,
+        data: res.data,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, botMsg]);
@@ -126,6 +179,9 @@ export default function ChatPage() {
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{msg.text}</p>
+                  {msg.data && msg.data.timetable_id && (
+                    <GenerationCard data={msg.data} />
+                  )}
                   {msg.intent && (
                     <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/30">
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">
