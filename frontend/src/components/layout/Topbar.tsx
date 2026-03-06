@@ -37,7 +37,7 @@ export function Topbar() {
       {/* Breadcrumbs */}
       <nav className="flex items-center gap-1.5 text-sm">
         {breadcrumbs.map((crumb, i) => (
-          <span key={crumb.path} className="flex items-center gap-1.5">
+          <span key={`${i}-${crumb.path}`} className="flex items-center gap-1.5">
             {i > 0 && <span className="text-muted-foreground">›</span>}
             {i === breadcrumbs.length - 1 ? (
               <span className="font-medium text-foreground">{crumb.label}</span>
