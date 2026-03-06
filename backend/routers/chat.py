@@ -6,7 +6,7 @@ from schemas.chat import ChatRequest, ChatResponse
 from core.chatbot.intent import classify_intent
 from core.chatbot.handlers import (
     handle_query, handle_absence, handle_explain, handle_smalltalk,
-    handle_generate, handle_publish,
+    handle_generate, handle_publish, handle_export,
 )
 from core.chatbot.generation_advisor import (
     pre_generation_analysis, post_generation_analysis, ai_suggest_assignments,
@@ -44,6 +44,14 @@ async def chat_message(
             intent=intent,
             confidence=confidence,
             data=pub_result.get("data"),
+        )
+    elif intent == "EXPORT":
+        exp_result = await handle_export(body.message, entities, db, college_id, dept_id)
+        return ChatResponse(
+            reply=exp_result["reply"],
+            intent=intent,
+            confidence=confidence,
+            data=exp_result.get("data"),
         )
     elif intent in ("QUERY", "EXAM"):
         reply = await handle_query(body.message, entities, db, college_id, dept_id)

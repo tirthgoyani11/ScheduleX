@@ -13,6 +13,7 @@ Classify the user message into EXACTLY ONE of these intents:
 INTENTS:
 - GENERATE   : User wants to generate/create a timetable
 - PUBLISH    : User wants to publish/finalize a timetable
+- EXPORT     : User wants to export/download a timetable as PDF or Excel
 - QUERY      : User is asking a question about the timetable (rooms, faculty, schedule)
 - ABSENCE    : User is reporting a faculty absence or wants a substitute
 - SUBSTITUTE : User wants to find/manage substitutes
@@ -49,6 +50,8 @@ def _keyword_fallback(msg: str) -> dict:
         return {"intent": "GENERATE", "confidence": 0.7, "entities": {}}
     if any(w in m for w in ("publish", "finalize", "release")):
         return {"intent": "PUBLISH", "confidence": 0.7, "entities": {}}
+    if any(w in m for w in ("export", "download", "pdf", "excel", "print")):
+        return {"intent": "EXPORT", "confidence": 0.7, "entities": {}}
     if any(w in m for w in ("absent", "absence", "not coming", "substitute", "sub")):
         return {"intent": "ABSENCE", "confidence": 0.7, "entities": {}}
     if any(w in m for w in ("free", "available", "clash", "conflict", "load", "utiliz")):

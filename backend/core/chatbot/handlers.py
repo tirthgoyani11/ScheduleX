@@ -282,22 +282,80 @@ async def handle_generate(
     for sid, fid in sid_to_fid.items():
         faculty_subject_map.setdefault(fid, []).append(sid)
 
-    # Step 2: AI pre-generation analysis
+    # Step 2: AI pre-generation analysis + auto-fix
     pre_analysis = await pre_generation_analysis(
         semester, faculty_subject_map, db, dept_id, college_id,
     )
 
+    auto_fixes: list[str] = []
     if not pre_analysis["ok"]:
-        critical_issues = [i for i in pre_analysis["issues"] if "🔴" in i]
-        return {
-            "reply": (
-                f"⚠️ **Pre-generation check found critical issues for semester {semester}:**\n\n"
-                + "\n".join(critical_issues)
-                + "\n\n" + pre_analysis["ai_summary"]
-                + "\n\nPlease fix these issues before generating."
-            ),
-            "data": {"pre_analysis": pre_analysis, "blocked": True},
-        }
+        # Auto-fix: redistribute overloaded faculty
+        subject_by_id = {s.subject_id: s for s in subject_list}
+        faculty_by_id = {f.faculty_id: f for f in faculty_list}
+        max_retries = 5
+        for _attempt in range(max_retries):
+            overloaded_fids = []
+            for fid, sids in faculty_subject_map.items():
+                fac = faculty_by_id.get(fid)
+                if not fac or not fac.max_weekly_load:
+                    continue
+                total = sum(_sub_load(subject_by_id[s]) for s in sids if s in subject_by_id)
+                if total > fac.max_weekly_load:
+                    overloaded_fids.append((fid, total, fac.max_weekly_load))
+
+            if not overloaded_fids:
+                break
+
+            for fid, total, maxl in overloaded_fids:
+                fac = faculty_by_id[fid]
+                sids = list(faculty_subject_map.get(fid, []))
+                # Sort subjects by load ascending — move smallest first
+                sids.sort(key=lambda s: _sub_load(subject_by_id[s]) if s in subject_by_id else 0)
+                while total > maxl and sids:
+                    move_sid = sids.pop(0)
+                    sub = subject_by_id.get(move_sid)
+                    if not sub:
+                        continue
+                    s_load = _sub_load(sub)
+                    # Find least-loaded faculty who can accept
+                    best_target = None
+                    best_load = float("inf")
+                    for tf in faculty_list:
+                        if tf.faculty_id == fid:
+                            continue
+                        t_sids = faculty_subject_map.get(tf.faculty_id, [])
+                        t_total = sum(
+                            _sub_load(subject_by_id[s]) for s in t_sids if s in subject_by_id
+                        )
+                        if tf.max_weekly_load and t_total + s_load > tf.max_weekly_load:
+                            continue
+                        if t_total < best_load:
+                            best_load = t_total
+                            best_target = tf
+                    if not best_target:
+                        # Accept even over-limit as last resort
+                        best_target = min(
+                            (f for f in faculty_list if f.faculty_id != fid),
+                            key=lambda f: sum(
+                                _sub_load(subject_by_id[s])
+                                for s in faculty_subject_map.get(f.faculty_id, [])
+                                if s in subject_by_id
+                            ),
+                        )
+                    # Move subject
+                    faculty_subject_map[fid] = [s for s in faculty_subject_map[fid] if s != move_sid]
+                    faculty_subject_map.setdefault(best_target.faculty_id, []).append(move_sid)
+                    total -= s_load
+                    auto_fixes.append(
+                        f"Moved '{sub.name}' from {fac.name} → {best_target.name}"
+                    )
+            # Remove empty entries
+            faculty_subject_map = {k: v for k, v in faculty_subject_map.items() if v}
+
+        # Re-run analysis after fixes
+        pre_analysis = await pre_generation_analysis(
+            semester, faculty_subject_map, db, dept_id, college_id,
+        )
 
     # Step 3: Clean old drafts and create timetable
     old_tts = await db.execute(
@@ -352,11 +410,26 @@ async def handle_generate(
         # Step 5: AI post-generation analysis
         post_analysis = await post_generation_analysis(timetable.timetable_id, db)
 
+        # Step 6: Auto-publish for seamless workflow
+        timetable.status = TimetableStatus.PUBLISHED
+        timetable.published_at = datetime.now(timezone.utc)
+        db.add(timetable)
+        await db.commit()
+
+        fix_summary = ""
+        if auto_fixes:
+            fix_summary = (
+                "\n\n🔧 **Auto-fixed issues:**\n"
+                + "\n".join(f"• {f}" for f in auto_fixes)
+            )
+
         reply = (
-            f"✅ **Timetable generated for semester {semester}!**\n\n"
+            f"✅ **Timetable generated & published for semester {semester}!**\n\n"
             f"📊 Status: {solver_status} | Score: {result.get('score', 0)}% | "
-            f"Entries: {result.get('entry_count', 0)} | Time: {result.get('wall_time', 0)}s\n\n"
-            f"🤖 **AI Analysis:**\n{post_analysis.get('ai_summary', 'Analysis unavailable.')}"
+            f"Entries: {result.get('entry_count', 0)} | Time: {result.get('wall_time', 0)}s"
+            f"{fix_summary}\n\n"
+            f"🤖 **AI Analysis:**\n{post_analysis.get('ai_summary', 'Analysis unavailable.')}\n\n"
+            f"📥 You can now say **\"Export PDF\"** to download it."
         )
 
         return {
@@ -367,6 +440,8 @@ async def handle_generate(
                 "score": result.get("score", 0),
                 "entry_count": result.get("entry_count", 0),
                 "wall_time": result.get("wall_time", 0),
+                "published": True,
+                "auto_fixes": auto_fixes,
                 "pre_analysis": pre_analysis,
                 "post_analysis": post_analysis,
             },
@@ -457,5 +532,60 @@ async def handle_publish(
             "status": "PUBLISHED",
             "score": draft.optimization_score,
             "entry_count": entry_count,
+        },
+    }
+
+
+# ── EXPORT ────────────────────────────────────────────────────────
+async def handle_export(
+    user_msg: str, entities: dict, db: AsyncSession,
+    college_id: str, dept_id: str,
+) -> dict:
+    """
+    Find the latest published/draft timetable and return its ID
+    so the frontend can trigger PDF download.
+    """
+    result = await db.execute(
+        select(Timetable)
+        .where(
+            Timetable.dept_id == dept_id,
+            Timetable.status.in_([TimetableStatus.PUBLISHED, TimetableStatus.DRAFT]),
+        )
+        .order_by(Timetable.created_at.desc())
+    )
+    tt = result.scalars().first()
+
+    if not tt:
+        return {
+            "reply": "No timetable found to export. Generate one first!",
+            "data": None,
+        }
+
+    entry_count = (await db.execute(
+        select(func.count()).select_from(TimetableEntry)
+        .where(TimetableEntry.timetable_id == tt.timetable_id)
+    )).scalar() or 0
+
+    # Determine export type from message
+    msg = user_msg.lower()
+    export_type = "department"
+    if "faculty" in msg:
+        export_type = "faculty"
+    elif "room" in msg:
+        export_type = "room"
+
+    return {
+        "reply": (
+            f"📥 **Ready to export!** Semester {tt.semester} timetable "
+            f"({entry_count} entries, score {tt.optimization_score or 0}%).\n\n"
+            f"Click the download button below to get your **{export_type}** PDF."
+        ),
+        "data": {
+            "timetable_id": tt.timetable_id,
+            "semester": tt.semester,
+            "export_type": export_type,
+            "entry_count": entry_count,
+            "score": tt.optimization_score,
+            "export_ready": True,
         },
     }

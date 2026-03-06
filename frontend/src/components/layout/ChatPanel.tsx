@@ -15,8 +15,12 @@ import {
   Calendar,
   X,
   MessageSquare,
+  Download,
+  Eye,
+  Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { apiClient } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 interface ChatMessage {
@@ -37,18 +41,20 @@ interface ChatApiResponse {
 }
 
 const QUICK_ACTIONS = [
-  "Which rooms are free Monday Period 2?",
-  "Show faculty load distribution",
   "Generate timetable for semester 3",
-  "Publish the timetable",
+  "Export PDF",
+  "Show faculty load distribution",
+  "Which rooms are free Monday Period 2?",
 ];
 
-function GenerationCard({ data }: { data: Record<string, unknown> }) {
+function GenerationCard({ data, onAction }: { data: Record<string, unknown>; onAction: (msg: string) => void }) {
   const score = data.score as number;
   const entryCount = data.entry_count as number;
   const wallTime = data.wall_time as number;
   const status = data.status as string;
   const timetableId = data.timetable_id as string;
+  const published = data.published as boolean;
+  const autoFixes = data.auto_fixes as string[] | undefined;
 
   return (
     <div className="mt-2 p-2 rounded-lg bg-background border space-y-1.5">
@@ -58,7 +64,7 @@ function GenerationCard({ data }: { data: Record<string, unknown> }) {
         ) : (
           <XCircle className="w-3.5 h-3.5 text-red-500" />
         )}
-        Timetable {status}
+        Timetable {status} {published && "& Published"}
       </div>
       <div className="grid grid-cols-3 gap-1 text-[10px] text-muted-foreground">
         <div className="flex items-center gap-1">
@@ -71,14 +77,76 @@ function GenerationCard({ data }: { data: Record<string, unknown> }) {
         </div>
         <div>{wallTime ?? 0}s</div>
       </div>
-      {timetableId && (
-        <a
-          href="/timetable"
-          className="text-[10px] text-primary underline hover:no-underline"
-        >
-          View Timetable →
-        </a>
+      {autoFixes && autoFixes.length > 0 && (
+        <div className="text-[10px] text-muted-foreground border-t pt-1">
+          <div className="flex items-center gap-1 font-medium text-amber-600">
+            <Wrench className="w-3 h-3" /> Auto-fixed {autoFixes.length} issue{autoFixes.length > 1 ? "s" : ""}
+          </div>
+        </div>
       )}
+      {timetableId && (
+        <div className="flex gap-1.5 pt-1">
+          <a
+            href={`/timetable/view/${timetableId}`}
+            className="inline-flex items-center gap-1 text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full hover:bg-primary/20 transition-colors"
+          >
+            <Eye className="w-3 h-3" /> View
+          </a>
+          <button
+            onClick={() => onAction(`Export PDF for this timetable`)}
+            className="inline-flex items-center gap-1 text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full hover:bg-primary/20 transition-colors"
+          >
+            <Download className="w-3 h-3" /> Export PDF
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExportCard({ data }: { data: Record<string, unknown> }) {
+  const timetableId = data.timetable_id as string;
+  const exportType = (data.export_type as string) || "department";
+
+  const handleDownload = async (type: string) => {
+    try {
+      const res = await apiClient.get(`/export/${type}/${timetableId}`, {
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `timetable_${type}.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      // silently fail
+    }
+  };
+
+  return (
+    <div className="mt-2 p-2 rounded-lg bg-background border space-y-1.5">
+      <div className="flex items-center gap-2 text-xs font-medium">
+        <Download className="w-3.5 h-3.5 text-primary" />
+        Download PDF
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {["department", "faculty", "room"].map((type) => (
+          <button
+            key={type}
+            onClick={() => handleDownload(type)}
+            className={cn(
+              "inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full transition-colors",
+              type === exportType
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted hover:bg-accent"
+            )}
+          >
+            <Download className="w-3 h-3" />
+            {type.charAt(0).toUpperCase() + type.slice(1)}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -222,8 +290,11 @@ export function ChatPanel() {
                   )}
                 >
                   <p className="whitespace-pre-wrap">{msg.text}</p>
-                  {msg.data && msg.data.timetable_id && (
-                    <GenerationCard data={msg.data} />
+                  {msg.data && msg.data.timetable_id && msg.data.export_ready && (
+                    <ExportCard data={msg.data} />
+                  )}
+                  {msg.data && msg.data.timetable_id && !msg.data.export_ready && (
+                    <GenerationCard data={msg.data} onAction={sendMessage} />
                   )}
                   {msg.intent && (
                     <div className="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-border/30">
