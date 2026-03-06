@@ -1,14 +1,10 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
-import type { Timetable, TimetableEntry, TimeSlot, Subject, Faculty } from "@/types";
+import { apiClient } from "@/lib/api-client";
+import type { Timetable, TimetableEntry, TimeSlot } from "@/types";
 
 const ALL_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const DAY_SHORT: Record<string, string> = {
-  Monday: "MONDAY", Tuesday: "TUESDAY", Wednesday: "WEDNESDAY",
-  Thursday: "THURSDAY", Friday: "FRIDAY", Saturday: "SATURDAY",
-};
 
+// ── Helpers for Excel export (client-side) ───────────────
 function getDays(entries: TimetableEntry[]) {
   const used = new Set(entries.map((e) => e.day));
   return ALL_DAYS.filter((d) => used.has(d));
@@ -36,10 +32,6 @@ function buildLookup(entries: TimetableEntry[]) {
   return map;
 }
 
-/**
- * Detect consecutive identical lab blocks.
- * Returns a map: slot_order → { type: "start", span, endTime } | { type: "skip" }
- */
 function detectLabBlocks(
   slots: TimeSlot[],
   days: string[],
@@ -87,324 +79,39 @@ function detectLabBlocks(
   return result;
 }
 
-/**
- * Detect consecutive identical entries for a single-entry lookup (faculty/room PDFs).
- */
-function detectSingleBlocks(
-  slots: TimeSlot[],
-  days: string[],
-  lookup: Map<string, TimetableEntry>
-) {
-  const result = new Map<string, { type: "start"; span: number; endTime: string } | { type: "skip" }>();
-  const nonBreak = slots.filter((s) => s.slot_type !== "break").sort((a, b) => a.slot_order - b.slot_order);
-
-  for (const day of days) {
-    let i = 0;
-    while (i < nonBreak.length) {
-      const curr = nonBreak[i];
-      const currEntry = lookup.get(`${day}|${curr.slot_order}`);
-      if (!currEntry) { i++; continue; }
-
-      const currSig = `${currEntry.subject_name}|${currEntry.faculty_name}|${currEntry.room_name}|${currEntry.batch || ""}`;
-
-      let span = 1;
-      while (i + span < nonBreak.length) {
-        const next = nonBreak[i + span];
-        const nextEntry = lookup.get(`${day}|${next.slot_order}`);
-        if (!nextEntry) break;
-        const nextSig = `${nextEntry.subject_name}|${nextEntry.faculty_name}|${nextEntry.room_name}|${nextEntry.batch || ""}`;
-        if (nextSig === currSig) span++;
-        else break;
-      }
-
-      if (span > 1) {
-        const lastSlot = nonBreak[i + span - 1];
-        result.set(`${day}|${curr.slot_order}`, { type: "start", span, endTime: lastSlot.end_time });
-        for (let j = 1; j < span; j++) {
-          result.set(`${day}|${nonBreak[i + j].slot_order}`, { type: "skip" });
-        }
-        i += span;
-      } else {
-        i++;
-      }
-    }
-  }
-  return result;
+// ── PDF Downloads (server-side via WeasyPrint) ───────────
+async function downloadPdf(url: string, filename: string) {
+  const response = await apiClient.get(url, { responseType: "blob" });
+  const blob = new Blob([response.data], { type: "application/pdf" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
 }
 
-// Generate faculty initials/abbreviation from name
-function facultyAbbr(name: string) {
-  const parts = name.split(/\s+/);
-  if (parts.length <= 1) return name.slice(0, 4).toUpperCase();
-  // Use first letter of first name + last name, e.g. "Dr. Rajesh Patel" → "RP"
-  const filtered = parts.filter((p) => !p.endsWith("."));
-  if (filtered.length === 0) return parts.map((p) => p[0]).join("").toUpperCase();
-  return filtered.map((p) => p[0]).join("").toUpperCase();
+export async function exportDepartmentPDF(tt: Timetable) {
+  const filename = `Timetable_Sem${tt.semester}_${tt.academic_year}.pdf`;
+  await downloadPdf(`/export/department/${tt.timetable_id}`, filename);
 }
 
-// ── GCET-Style Department PDF ────────────────────────────
-export function exportDepartmentPDF(
-  tt: Timetable,
-  slots: TimeSlot[],
-  subjects?: Subject[],
-  faculty?: Faculty[],
-  collegeName?: string,
-  deptName?: string
-) {
-  const days = getDays(tt.entries);
-  const batchNames = getBatchNames(tt.entries);
-  const labPeriods = getLabPeriods(tt.entries);
-  const lookup = buildLookup(tt.entries);
-  const hasBatches = batchNames.length > 0;
-
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-  const pageW = doc.internal.pageSize.getWidth();
-  const margin = 5;
-
-  // ── Header Section (compact) ──
-  const college = collegeName || "Charutar Vidya Mandal University";
-  const dept = deptName || "Department of Computer Engineering";
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(college, pageW / 2, 8, { align: "center" });
-
-  doc.setFontSize(7.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Timetable For ${tt.academic_year}  |  Program: ${dept}, Semester: ${tt.semester}`, pageW / 2, 13, { align: "center" });
-
-  // Info row
-  doc.setFontSize(6);
-  const dateStr = tt.created_at ? new Date(tt.created_at).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN");
-  doc.text(`Status: ${tt.status}     Score: ${tt.optimization_score ?? "N/A"}/100`, margin, 17);
-  doc.text(`Generated: ${dateStr}`, pageW - margin, 17, { align: "right" });
-
-  // ── Build the main timetable grid ──
-  // For lab periods, each day gets split into batch sub-columns
-  const numBatches = hasBatches ? batchNames.length : 1;
-
-  // Build header row(s)
-  // Row 1: Time + day names (spanning batch columns)
-  const headerRow1: any[] = [{ content: "Time", rowSpan: hasBatches ? 2 : 1, styles: { halign: "center", valign: "middle" } }];
-  for (const day of days) {
-    headerRow1.push({
-      content: DAY_SHORT[day] || day.toUpperCase(),
-      colSpan: hasBatches ? numBatches : 1,
-      styles: { halign: "center" },
-    });
-  }
-
-  // Row 2: batch names under each day (only if we have batches)
-  const headerRow2: any[] = [];
-  if (hasBatches) {
-    for (const _day of days) {
-      for (const bn of batchNames) {
-        headerRow2.push({ content: bn, styles: { halign: "center", fontSize: 5.5 } });
-      }
-    }
-  }
-
-  const headRows = hasBatches ? [headerRow1, headerRow2] : [headerRow1];
-
-  // Detect merged lab blocks
-  const labBlocks = detectLabBlocks(slots, days, lookup);
-
-  // Build body rows — lab "start" cells use rowSpan to merge vertically
-  const bodyRows: any[][] = [];
-  for (const slot of slots) {
-    const row: any[] = [];
-
-    // Time cell — always shows this slot's own time
-    row.push({
-      content: `${slot.start_time} to ${slot.end_time}\n${slot.label}`,
-      styles: { fontStyle: "bold", fontSize: 5, halign: "center", valign: "middle" },
-    });
-
-    if (slot.slot_type === "break") {
-      row.push({
-        content: slot.label.toUpperCase(),
-        colSpan: days.length * (hasBatches ? numBatches : 1),
-        styles: {
-          halign: "center", valign: "middle", fontStyle: "bold",
-          fillColor: [255, 255, 200], fontSize: 6,
-        },
-      });
-      bodyRows.push(row);
-      continue;
-    }
-
-    const isLabSlot = labPeriods.has(slot.slot_order);
-
-    for (const day of days) {
-      const blockInfo = labBlocks.get(`${day}|${slot.slot_order}`);
-
-      // Continuation cell — covered by rowSpan from the start row above
-      if (blockInfo?.type === "skip") {
-        continue; // autotable handles spanned columns automatically
-      }
-
-      const cellEntries = lookup.get(`${day}|${slot.slot_order}`) || [];
-
-      if (hasBatches && isLabSlot) {
-        for (const bn of batchNames) {
-          const entry = cellEntries.find((e) => e.batch === bn);
-          const cellData: any = {
-            styles: { fontSize: 4.5, halign: "center", valign: "middle", cellPadding: 0.5 },
-          };
-          if (blockInfo?.type === "start") {
-            cellData.rowSpan = blockInfo.span;
-          }
-          if (entry) {
-            const hours = blockInfo?.type === "start" ? ` (${blockInfo.span}h)` : "";
-            cellData.content = `${entry.subject_name}\n${facultyAbbr(entry.faculty_name)}\n${entry.room_name}${hours}`;
-          } else {
-            cellData.content = "—";
-            cellData.styles.textColor = [180, 180, 180];
-          }
-          row.push(cellData);
-        }
-      } else if (hasBatches) {
-        if (cellEntries.length > 0) {
-          const e = cellEntries[0];
-          row.push({
-            content: `${e.subject_name}\n${facultyAbbr(e.faculty_name)}\n${e.room_name}`,
-            colSpan: numBatches,
-            styles: { fontSize: 5.5, halign: "center", valign: "middle" },
-          });
-        } else {
-          row.push({
-            content: "—",
-            colSpan: numBatches,
-            styles: { halign: "center", valign: "middle", textColor: [180, 180, 180] },
-          });
-        }
-      } else {
-        if (cellEntries.length > 0) {
-          const e = cellEntries[0];
-          row.push({
-            content: `${e.subject_name}\n${facultyAbbr(e.faculty_name)}\n${e.room_name}`,
-            styles: { fontSize: 5.5, halign: "center", valign: "middle" },
-          });
-        } else {
-          row.push({ content: "—", styles: { halign: "center", valign: "middle", textColor: [180, 180, 180] } });
-        }
-      }
-    }
-
-    bodyRows.push(row);
-  }
-
-  autoTable(doc, {
-    startY: 19,
-    head: headRows,
-    body: bodyRows,
-    theme: "grid",
-    margin: { left: margin, right: margin },
-    styles: { fontSize: 5, cellPadding: 0.8, valign: "middle", overflow: "linebreak", lineWidth: 0.15 },
-    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold", halign: "center", fontSize: 5.5, minCellHeight: 5 },
-    columnStyles: { 0: { cellWidth: 18 } },
-    tableLineColor: [0, 0, 0],
-    tableLineWidth: 0.15,
-  });
-
-  let curY = (doc as any).lastAutoTable.finalY + 3;
-
-  // ── Subject Legend Table ──
-  const subjectSet = new Map<string, TimetableEntry>();
-  for (const e of tt.entries) {
-    if (!subjectSet.has(e.subject_name)) subjectSet.set(e.subject_name, e);
-  }
-
-  // Try to match with subjects data for L/P/T/C info
-  const subjectRows: string[][] = [];
-  for (const [name, entry] of subjectSet) {
-    const matched = subjects?.find((s) => s.name === name);
-    if (matched) {
-      subjectRows.push([
-        matched.subject_code,
-        matched.name,
-        String(matched.lecture_hours || matched.weekly_periods),
-        String(matched.lab_hours || 0),
-        "0",
-        String(matched.credits),
-      ]);
-    } else {
-      const isLab = entry.entry_type === "lab" || !!entry.batch;
-      subjectRows.push([
-        "—",
-        name,
-        isLab ? "0" : "3",
-        isLab ? "2" : "0",
-        "0",
-        "—",
-      ]);
-    }
-  }
-
-  if (subjectRows.length > 0) {
-    doc.setFontSize(6.5);
-    doc.setFont("helvetica", "bold");
-    doc.text("Subject Details:", margin, curY);
-    curY += 1;
-
-    autoTable(doc, {
-      startY: curY,
-      head: [["SUBJECT CODE", "NAME OF SUBJECT", "L", "P", "T", "C"]],
-      body: subjectRows,
-      theme: "grid",
-      margin: { left: margin },
-      styles: { fontSize: 5.5, cellPadding: 0.7 },
-      headStyles: { fillColor: [255, 255, 0], textColor: 0, fontStyle: "bold", halign: "center", fontSize: 5.5 },
-      columnStyles: {
-        0: { cellWidth: 20, halign: "center" },
-        1: { cellWidth: 55 },
-        2: { cellWidth: 8, halign: "center" },
-        3: { cellWidth: 8, halign: "center" },
-        4: { cellWidth: 8, halign: "center" },
-        5: { cellWidth: 8, halign: "center" },
-      },
-      tableWidth: "wrap",
-      tableLineColor: [0, 0, 0],
-      tableLineWidth: 0.15,
-    });
-
-    curY = (doc as any).lastAutoTable.finalY + 2;
-  }
-
-  // ── Faculty Legend (inline) ──
-  const facultyNames = Array.from(new Set(tt.entries.map((e) => e.faculty_name))).sort();
-  if (facultyNames.length > 0) {
-    doc.setFontSize(6);
-    doc.setFont("helvetica", "bold");
-    doc.text("Faculty:", margin, curY);
-    curY += 3;
-
-    const legendParts = facultyNames.map((fn) => `${facultyAbbr(fn)} - ${fn}`);
-    // Lay out in rows, ~3 per row with spacing
-    const colW = 90;
-    const cols = 3;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(5.5);
-    for (let i = 0; i < legendParts.length; i += cols) {
-      for (let c = 0; c < cols && i + c < legendParts.length; c++) {
-        doc.text(legendParts[i + c], margin + c * colW, curY);
-      }
-      curY += 3.5;
-    }
-    curY += 1;
-  }
-
-  // ── Footer ──
-  doc.setFontSize(6);
-  doc.setFont("helvetica", "normal");
-  doc.text("Prepared by: ___________________", margin, curY);
-  doc.text("Verified by HOD: ___________________", pageW / 2 - 30, curY);
-  doc.text("Principal/Director: ___________________", pageW - margin - 55, curY);
-
-  doc.save(`Timetable_Sem${tt.semester}_${tt.academic_year}.pdf`);
+export async function exportFacultyPDF(tt: Timetable, facultyName: string) {
+  const safeName = facultyName.replace(/\s+/g, "_");
+  const filename = `Schedule_${safeName}.pdf`;
+  await downloadPdf(
+    `/export/faculty/${tt.timetable_id}?faculty_name=${encodeURIComponent(facultyName)}`,
+    filename,
+  );
 }
 
-// ── Excel Workbook ───────────────────────────────────────
+export async function exportRoomPDF(tt: Timetable) {
+  const filename = `Room_Allocation_Sem${tt.semester}_${tt.academic_year}.pdf`;
+  await downloadPdf(`/export/room/${tt.timetable_id}`, filename);
+}
+
+// ── Excel Workbook (client-side) ─────────────────────────
 export function exportExcelWorkbook(tt: Timetable, slots: TimeSlot[]) {
   const days = getDays(tt.entries);
   const batchNames = getBatchNames(tt.entries);
@@ -434,7 +141,6 @@ export function exportExcelWorkbook(tt: Timetable, slots: TimeSlot[]) {
   const gridData: string[][] = [headerRow1];
   if (hasBatches) gridData.push(headerRow2);
 
-  // Track row indices for lab block merges
   const xlLabMerges: XLSX.Range[] = [];
   const headerOffset = hasBatches ? 2 : 1;
   let xlRowIdx = headerOffset;
@@ -455,8 +161,9 @@ export function exportExcelWorkbook(tt: Timetable, slots: TimeSlot[]) {
     for (const day of days) {
       const blockInfo = xlLabBlocks.get(`${day}|${slot.slot_order}`);
       const cellEntries = lookup.get(`${day}|${slot.slot_order}`) || [];
+      const cellHasLabs = cellEntries.some((e) => e.batch);
 
-      if (hasBatches && isLabSlot) {
+      if (hasBatches && isLabSlot && cellHasLabs) {
         for (const bn of batchNames) {
           if (blockInfo?.type === "start") {
             const entry = cellEntries.find((e) => e.batch === bn);
@@ -490,7 +197,6 @@ export function exportExcelWorkbook(tt: Timetable, slots: TimeSlot[]) {
 
   const wsGrid = XLSX.utils.aoa_to_sheet(gridData);
   wsGrid["!cols"] = [{ wch: 22 }, ...Array(days.length * numBatches).fill({ wch: 20 })];
-  // Merge header cells for day names + lab block cells vertically
   const allMerges: XLSX.Range[] = [...xlLabMerges];
   if (hasBatches) {
     let col = 1;
@@ -551,154 +257,4 @@ export function exportExcelWorkbook(tt: Timetable, slots: TimeSlot[]) {
   XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
 
   XLSX.writeFile(wb, `Timetable_Sem${tt.semester}_${tt.academic_year}.xlsx`);
-}
-
-// ── Faculty Schedule PDF ─────────────────────────────────
-export function exportFacultyPDF(
-  tt: Timetable,
-  slots: TimeSlot[],
-  facultyName: string
-) {
-  const entries = tt.entries.filter((e) => e.faculty_name === facultyName);
-  const days = getDays(entries.length ? entries : tt.entries);
-
-  const lookup = new Map<string, TimetableEntry>();
-  for (const e of entries) {
-    lookup.set(`${e.day}|${e.period}`, e);
-  }
-
-  const facBlocks = detectSingleBlocks(slots, days, lookup);
-
-  const rows: string[][] = [];
-  for (const slot of slots) {
-    // Skip continuation rows
-    const allSkip = slot.slot_type !== "break" && days.every((d) => {
-      const info = facBlocks.get(`${d}|${slot.slot_order}`);
-      if (info?.type === "skip") return true;
-      if (info?.type === "start") return false;
-      return !lookup.get(`${d}|${slot.slot_order}`);
-    });
-    if (allSkip) continue;
-
-    let timeLabel = `${slot.start_time}-${slot.end_time}`;
-    if (slot.slot_type !== "break") {
-      for (const day of days) {
-        const info = facBlocks.get(`${day}|${slot.slot_order}`);
-        if (info?.type === "start") {
-          timeLabel = `${slot.start_time}-${info.endTime}`;
-          break;
-        }
-      }
-    }
-
-    const row: string[] = [timeLabel];
-    for (const day of days) {
-      if (slot.slot_type === "break") {
-        row.push(slot.label);
-        continue;
-      }
-      const blockInfo = facBlocks.get(`${day}|${slot.slot_order}`);
-      if (blockInfo?.type === "skip") { row.push(""); continue; }
-      const entry = lookup.get(`${day}|${slot.slot_order}`);
-      const hours = blockInfo?.type === "start" ? ` (${blockInfo.span}h)` : "";
-      row.push(entry ? `${entry.subject_name}\n${entry.room_name}${entry.batch ? `\n(${entry.batch})` : ""}${hours}` : "—");
-    }
-    rows.push(row);
-  }
-
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-  doc.setFontSize(14);
-  doc.text(`Faculty Schedule — ${facultyName}`, 14, 15);
-  doc.setFontSize(9);
-  doc.text(`Semester ${tt.semester} · ${tt.academic_year} | Periods: ${entries.length}`, 14, 21);
-
-  autoTable(doc, {
-    startY: 26,
-    head: [["Time", ...days]],
-    body: rows,
-    theme: "grid",
-    styles: { fontSize: 8, cellPadding: 2.5, valign: "middle", overflow: "linebreak" },
-    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold", halign: "center" },
-    columnStyles: { 0: { cellWidth: 22, fontStyle: "bold" } },
-  });
-
-  doc.save(`Schedule_${facultyName.replace(/\s+/g, "_")}.pdf`);
-}
-
-// ── Room Allocation PDF ──────────────────────────────────
-export function exportRoomPDF(tt: Timetable, slots: TimeSlot[]) {
-  const days = getDays(tt.entries);
-  const roomNames = Array.from(new Set(tt.entries.map((e) => e.room_name))).sort();
-
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-  doc.setFontSize(14);
-  doc.text(`Room Allocation — Semester ${tt.semester} · ${tt.academic_year}`, 14, 15);
-
-  let startY = 22;
-
-  for (const roomName of roomNames) {
-    const roomEntries = tt.entries.filter((e) => e.room_name === roomName);
-    const lookup = new Map<string, TimetableEntry>();
-    for (const e of roomEntries) {
-      lookup.set(`${e.day}|${e.period}`, e);
-    }
-
-    const roomBlocks = detectSingleBlocks(slots, days, lookup);
-
-    const rows: string[][] = [];
-    for (const slot of slots) {
-      const allSkip = slot.slot_type !== "break" && days.every((d) => {
-        const info = roomBlocks.get(`${d}|${slot.slot_order}`);
-        if (info?.type === "skip") return true;
-        if (info?.type === "start") return false;
-        return !lookup.get(`${d}|${slot.slot_order}`);
-      });
-      if (allSkip) continue;
-
-      let timeLabel = `${slot.start_time}-${slot.end_time}`;
-      if (slot.slot_type !== "break") {
-        for (const day of days) {
-          const info = roomBlocks.get(`${day}|${slot.slot_order}`);
-          if (info?.type === "start") {
-            timeLabel = `${slot.start_time}-${info.endTime}`;
-            break;
-          }
-        }
-      }
-
-      const row: string[] = [timeLabel];
-      for (const day of days) {
-        if (slot.slot_type === "break") { row.push("—"); continue; }
-        const blockInfo = roomBlocks.get(`${day}|${slot.slot_order}`);
-        if (blockInfo?.type === "skip") { row.push(""); continue; }
-        const entry = lookup.get(`${day}|${slot.slot_order}`);
-        const hours = blockInfo?.type === "start" ? ` (${blockInfo.span}h)` : "";
-        row.push(entry ? `${entry.subject_name}\n${entry.faculty_name}${entry.batch ? `\n(${entry.batch})` : ""}${hours}` : "—");
-      }
-      rows.push(row);
-    }
-
-    if (startY > 140) {
-      doc.addPage();
-      startY = 15;
-    }
-
-    doc.setFontSize(11);
-    doc.text(roomName, 14, startY);
-    startY += 3;
-
-    autoTable(doc, {
-      startY,
-      head: [["Time", ...days]],
-      body: rows,
-      theme: "grid",
-      styles: { fontSize: 7, cellPadding: 1.5, valign: "middle", overflow: "linebreak" },
-      headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: "bold", halign: "center" },
-      columnStyles: { 0: { cellWidth: 20, fontStyle: "bold" } },
-    });
-
-    startY = (doc as any).lastAutoTable.finalY + 8;
-  }
-
-  doc.save(`Room_Allocation_Sem${tt.semester}_${tt.academic_year}.pdf`);
 }
