@@ -138,8 +138,8 @@ async def seed():
             ("Room 301",  60, RoomType.CLASSROOM, True,  False, False),
             ("Room 302",  60, RoomType.CLASSROOM, True,  False, True),
             ("Room 303",  90, RoomType.CLASSROOM, True,  False, False),
-            ("CS Lab 1",  40, RoomType.LAB,       True,  True,  True),
-            ("CS Lab 2",  40, RoomType.LAB,       True,  True,  True),
+            ("CS Lab 1",  60, RoomType.LAB,       True,  True,  True),
+            ("CS Lab 2",  60, RoomType.LAB,       True,  True,  True),
         ]
         for name, cap, rtype, proj, comp, ac in room_data:
             db.add(Room(
