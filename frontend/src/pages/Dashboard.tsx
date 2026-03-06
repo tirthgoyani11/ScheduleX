@@ -48,6 +48,9 @@ export default function DashboardPage() {
     name: r.name,
     value: r.utilisation_pct,
     fill: COLORS[i % COLORS.length],
+    capacity: r.capacity,
+    bookedSlots: r.booked_slots,
+    totalSlots: r.total_slots,
   }));
 
   return (
