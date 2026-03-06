@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useTimetable } from "@/hooks/useTimetable";
 import { useFaculty } from "@/hooks/useFaculty";
 import { useTimeSlots } from "@/hooks/useTimeSlots";
+import { useSubjects } from "@/hooks/useSubjects";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -26,6 +27,7 @@ export default function ExportPage() {
   const { data: timetables, isLoading } = useTimetable();
   const { data: allFaculty } = useFaculty();
   const { data: slots } = useTimeSlots();
+  const { data: allSubjects } = useSubjects();
   const [selectedTimetableId, setSelectedTimetableId] = useState("");
   const [selectedFacultyName, setSelectedFacultyName] = useState("");
   const [exporting, setExporting] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export default function ExportPage() {
     try {
       switch (format) {
         case "pdf":
-          exportDepartmentPDF(selectedTT, slots);
+          exportDepartmentPDF(selectedTT, slots, allSubjects, allFaculty);
           break;
         case "xlsx":
           exportExcelWorkbook(selectedTT, slots);

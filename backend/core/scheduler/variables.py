@@ -30,15 +30,16 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
     batches = data.get("batches", [])
     slot_lookup = data.get("slot_lookup", {})
 
-    # ── Classify periods by type ──────────────────────────────────────────────
-    lecture_periods = []
-    lab_periods = []
+    # ── Classify periods — all non-break periods available for both theory & lab
+    usable_periods = []
     for p in periods:
         slot = slot_lookup.get(p)
-        if slot and slot.slot_type == SlotType.LAB:
-            lab_periods.append(p)
-        else:
-            lecture_periods.append(p)
+        if slot and slot.slot_type == SlotType.BREAK:
+            continue
+        usable_periods.append(p)
+    # Keep lecture_periods & lab_periods as aliases (both = all usable)
+    lecture_periods = list(usable_periods)
+    lab_periods = list(usable_periods)
 
     # ── Classify rooms ────────────────────────────────────────────────────────
     classrooms = [r for r in rooms if r.room_type.value != "lab"]

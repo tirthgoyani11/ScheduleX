@@ -168,8 +168,8 @@ async def seed():
             (4, "Period 4", "12:00", "13:00", SlotType.LECTURE),
             (5, "Lunch",    "13:00", "14:00", SlotType.BREAK),
             (6, "Period 5", "14:00", "15:00", SlotType.LECTURE),
-            (7, "Lab 1",   "15:00", "17:00", SlotType.LAB),
-            (8, "Lab 2",   "17:00", "19:00", SlotType.LAB),
+            (7, "Period 6", "15:00", "17:00", SlotType.LECTURE),
+            (8, "Period 7", "17:00", "19:00", SlotType.LECTURE),
         ]
         for order, label, start, end, stype in slot_data:
             db.add(TimeSlotConfig(
