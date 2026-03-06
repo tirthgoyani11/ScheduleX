@@ -10,6 +10,7 @@ import DashboardPage from "@/pages/Dashboard";
 import HodDashboard from "@/pages/dashboards/HodDashboard";
 import FacultyDashboard from "@/pages/dashboards/FacultyDashboard";
 import UserManagementPage from "@/pages/admin/UserManagement";
+import PdfImportPage from "@/pages/admin/PdfImport";
 import TimeSlotsPage from "@/pages/setup/TimeSlots";
 import SubjectsPage from "@/pages/setup/Subjects";
 import FacultyPage from "@/pages/setup/Faculty";
@@ -45,6 +46,7 @@ const App = () => (
             <Route path="/dashboard/hod" element={<RoleGuard roles={["dept_admin"]}><HodDashboard /></RoleGuard>} />
             <Route path="/dashboard/faculty" element={<RoleGuard roles={["faculty"]}><FacultyDashboard /></RoleGuard>} />
             <Route path="/admin/users" element={<RoleGuard roles={["super_admin"]}><UserManagementPage /></RoleGuard>} />
+            <Route path="/admin/pdf-import" element={<RoleGuard roles={["super_admin"]}><PdfImportPage /></RoleGuard>} />
             <Route path="/setup/time-slots" element={<RoleGuard roles={["super_admin", "dept_admin"]}><TimeSlotsPage /></RoleGuard>} />
             <Route path="/setup/subjects" element={<RoleGuard roles={["super_admin", "dept_admin"]}><SubjectsPage /></RoleGuard>} />
             <Route path="/setup/faculty" element={<RoleGuard roles={["super_admin", "dept_admin"]}><FacultyPage /></RoleGuard>} />
