@@ -3,12 +3,12 @@ import { api } from "@/lib/api-client";
 import type { Faculty } from "@/types";
 import { toast } from "sonner";
 
-export function useFaculty() {
+export function useFaculty(deptId?: string) {
   const qc = useQueryClient();
 
   const { data = [], isLoading } = useQuery<Faculty[]>({
-    queryKey: ["faculty"],
-    queryFn: () => api.get("/faculty"),
+    queryKey: ["faculty", deptId],
+    queryFn: () => api.get("/faculty", deptId ? { dept_id: deptId } : undefined),
   });
 
   const createMutation = useMutation({

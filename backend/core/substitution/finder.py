@@ -138,21 +138,18 @@ def _expertise_match(subject, faculty) -> float:
     if not faculty.expertise:
         return 0.0
 
-    # Check subject code match
-    if subject.subject_code in faculty.expertise:
-        return 1.0
-
     # Check subject name match (case insensitive)
     subject_name_lower = subject.name.lower()
     for exp in faculty.expertise:
-        if exp.lower() in subject_name_lower or subject_name_lower in exp.lower():
+        exp_lower = exp.lower()
+        if exp_lower in subject_name_lower or subject_name_lower in exp_lower:
             return 1.0
 
-    # Simple related-area heuristic: share first 2 chars of code
+    # Partial keyword match in subject name
+    name_words = [w.lower() for w in subject.name.split() if len(w) > 2]
     for exp in faculty.expertise:
-        if len(exp) >= 2 and len(subject.subject_code) >= 2:
-            if exp[:2].upper() == subject.subject_code[:2].upper():
-                return 0.5
+        if any(exp.lower() in w or w in exp.lower() for w in name_words):
+            return 0.5
 
     return 0.0
 

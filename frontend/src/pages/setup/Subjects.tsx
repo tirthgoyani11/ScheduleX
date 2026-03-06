@@ -4,11 +4,14 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { StatusChip, getSubjectChipVariant } from "@/components/common/StatusChip";
 import { useSubjects } from "@/hooks/useSubjects";
+import { useDepartments } from "@/hooks/useDepartments";
+import { useAuthStore } from "@/store/useAuthStore";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useSetupStore } from "@/store/useSetupStore";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SubjectsSkeleton } from "@/components/skeletons/PageSkeletons";
 import type { Subject } from "@/types";
 
@@ -17,8 +20,14 @@ const defaultForm = {
 };
 
 export default function SubjectsPage() {
+  const user = useAuthStore((s) => s.user);
+  const isSuperAdmin = user?.role === "super_admin";
+  const { data: departments } = useDepartments();
+  const [selectedDeptId, setSelectedDeptId] = useState<string>("");
+
+  const activeDeptId = isSuperAdmin && selectedDeptId && selectedDeptId !== "all" ? selectedDeptId : undefined;
   const { currentSemester, setSemester } = useSetupStore();
-  const { data: allSubjects, isLoading, create, update, remove } = useSubjects(currentSemester);
+  const { data: allSubjects, isLoading, create, update, remove } = useSubjects(currentSemester, activeDeptId);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [form, setForm] = useState(defaultForm);
@@ -72,6 +81,23 @@ export default function SubjectsPage() {
       <PageHeader title="Subjects" description="Manage subjects by semester">
         <Button className="rounded-xl btn-press gap-2" onClick={openCreate}><Plus className="h-4 w-4" />Add Subject</Button>
       </PageHeader>
+
+      {/* Department filter & Semester tabs */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {isSuperAdmin && departments.length > 0 && (
+          <Select value={selectedDeptId} onValueChange={setSelectedDeptId}>
+            <SelectTrigger className="w-[200px] rounded-xl">
+              <SelectValue placeholder="All Departments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Departments</SelectItem>
+              {departments.map((d) => (
+                <SelectItem key={d.dept_id} value={d.dept_id}>{d.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
       {/* Semester tabs */}
       <div className="flex gap-1.5 flex-wrap">

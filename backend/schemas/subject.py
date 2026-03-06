@@ -14,6 +14,7 @@ class SubjectCreate(BaseModel):
     needs_lab: bool = False
     batch_size: int = Field(60, ge=1, le=500)
     batch: str | None = None
+    dept_id: str | None = None
 
 
 class SubjectUpdate(BaseModel):

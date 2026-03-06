@@ -28,9 +28,9 @@ async def auto_assign_faculty(
     Auto-assign faculty to subjects for a given semester using expertise matching.
 
     Matching strategy:
-    1. Exact match: faculty.expertise contains the subject_code (e.g. "CS301")
-    2. Prefix match: faculty.expertise item is a prefix of subject_code (e.g. "CN" matches "CN", "CS301")
-    3. Name keyword: expertise keyword appears in subject name (e.g. "CN" in "Computer Networks")
+    1. Abbreviation match: faculty expertise abbreviation maps to subject name (e.g. "CN" -> "Computer Networks")
+    2. Keyword match: expertise keyword appears in subject name (e.g. "networks" in "Computer Networks")
+    3. Reverse keyword: subject name keyword appears in expertise
 
     Returns: { subject_id: faculty_id } for each subject that could be matched.
     Faculty load balancing is applied: prefer faculty with fewer assignments.
@@ -92,30 +92,22 @@ async def auto_assign_faculty(
     def match_score(faculty: Faculty, subject: Subject) -> int:
         """Score how well a faculty matches a subject. Higher = better. 0 = no match."""
         expertise = [e.lower().strip() for e in (faculty.expertise or [])]
-        code_lower = subject.subject_code.lower()
         name_lower = subject.name.lower()
         score = 0
 
         for exp in expertise:
-            # Exact code match (highest priority)
-            if exp == code_lower:
-                score = max(score, 100)
-            # Code starts with expertise (e.g. "cs301" starts with "cs301b" won't match,
-            # but "cs301" expertise matching "cs301" subject would)
-            elif code_lower.startswith(exp):
-                score = max(score, 80)
-            # Abbreviation match
-            elif exp in abbreviation_map:
+            # Abbreviation match (highest priority)
+            if exp in abbreviation_map:
                 for phrase in abbreviation_map[exp]:
                     if phrase in name_lower:
-                        score = max(score, 70)
+                        score = max(score, 100)
                         break
             # Keyword in subject name
             elif exp in name_lower:
-                score = max(score, 60)
+                score = max(score, 80)
             # Check if any subject name keyword matches expertise
             elif any(kw in exp for kw in subject_keywords.get(subject.subject_id, [])):
-                score = max(score, 40)
+                score = max(score, 60)
 
         return score
 

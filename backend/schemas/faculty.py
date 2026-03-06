@@ -10,6 +10,7 @@ class FacultyCreate(BaseModel):
     max_weekly_load: int = Field(18, ge=1, le=40)
     preferred_time: str | None = Field(None, description="morning | afternoon | any")
     user_id: str | None = None
+    dept_id: str | None = None
 
 
 class FacultyUpdate(BaseModel):

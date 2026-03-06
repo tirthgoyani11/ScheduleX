@@ -15,7 +15,7 @@ class Subject(Base):
         ForeignKey("departments.dept_id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    subject_code: Mapped[str] = mapped_column(String(20), nullable=False)  # e.g. "CS301"
+    subject_code: Mapped[str] = mapped_column(String(20), nullable=False)  # BBSSNNVV e.g. "01030100"
     semester: Mapped[int] = mapped_column(Integer, nullable=False)
     credits: Mapped[int] = mapped_column(Integer, default=3)
     weekly_periods: Mapped[int] = mapped_column(Integer, default=3)  # Total teaching hours/week (legacy)

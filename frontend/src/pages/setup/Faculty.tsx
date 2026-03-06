@@ -3,8 +3,11 @@ import { Plus, Pencil, Trash2, Users, Search } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { useFaculty } from "@/hooks/useFaculty";
+import { useDepartments } from "@/hooks/useDepartments";
+import { useAuthStore } from "@/store/useAuthStore";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -14,7 +17,13 @@ import type { Faculty } from "@/types";
 const defaultForm = { name: "", empId: "", expertise: "", maxLoad: 20 };
 
 export default function FacultyPage() {
-  const { data: facultyList, isLoading, create, update, remove } = useFaculty();
+  const user = useAuthStore((s) => s.user);
+  const isSuperAdmin = user?.role === "super_admin";
+  const { data: departments } = useDepartments();
+  const [selectedDeptId, setSelectedDeptId] = useState<string>("");
+
+  const activeDeptId = isSuperAdmin && selectedDeptId && selectedDeptId !== "all" ? selectedDeptId : undefined;
+  const { data: facultyList, isLoading, create, update, remove } = useFaculty(activeDeptId);
   const [search, setSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingFaculty, setEditingFaculty] = useState<Faculty | null>(null);
@@ -69,8 +78,21 @@ export default function FacultyPage() {
         <Button className="rounded-xl btn-press gap-2" onClick={openCreate}><Plus className="h-4 w-4" />Add Faculty</Button>
       </PageHeader>
 
-      {/* Search */}
+      {/* Search & Department Filter */}
       <div className="flex items-center gap-3 flex-wrap">
+        {isSuperAdmin && departments.length > 0 && (
+          <Select value={selectedDeptId} onValueChange={setSelectedDeptId}>
+            <SelectTrigger className="w-[200px] rounded-xl">
+              <SelectValue placeholder="All Departments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Departments</SelectItem>
+              {departments.map((d) => (
+                <SelectItem key={d.dept_id} value={d.dept_id}>{d.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input className="rounded-xl pl-9" placeholder="Search faculty..." value={search} onChange={(e) => setSearch(e.target.value)} />

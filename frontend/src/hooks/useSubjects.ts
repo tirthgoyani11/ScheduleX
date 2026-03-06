@@ -3,13 +3,17 @@ import { api } from "@/lib/api-client";
 import type { Subject } from "@/types";
 import { toast } from "sonner";
 
-export function useSubjects(semester?: number) {
+export function useSubjects(semester?: number, deptId?: string) {
   const qc = useQueryClient();
 
   const { data = [], isLoading } = useQuery<Subject[]>({
-    queryKey: ["subjects", semester],
-    queryFn: () =>
-      api.get("/subjects", semester ? { semester } : undefined),
+    queryKey: ["subjects", semester, deptId],
+    queryFn: () => {
+      const params: Record<string, unknown> = {};
+      if (semester) params.semester = semester;
+      if (deptId) params.dept_id = deptId;
+      return api.get("/subjects", Object.keys(params).length ? params : undefined);
+    },
   });
 
   const createMutation = useMutation({

@@ -19,9 +19,13 @@ async def create_faculty(
     current_user: User = Depends(require_any_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new faculty member. Dept admin only."""
+    """Create a new faculty member. Admin only."""
+    # Super admin must provide dept_id in request; dept admin uses own dept
+    target_dept_id = request.dept_id if (current_user.role == UserRole.SUPER_ADMIN and request.dept_id) else current_user.dept_id
+    if not target_dept_id:
+        raise HTTPException(status_code=400, detail="Department ID required")
     faculty = Faculty(
-        dept_id=current_user.dept_id,
+        dept_id=target_dept_id,
         user_id=request.user_id,
         name=request.name,
         employee_id=request.employee_id,
@@ -37,11 +41,13 @@ async def create_faculty(
 
 @router.get("", response_model=list[FacultyResponse])
 async def list_faculty(
+    dept_id: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     List faculty members.
+    - Super admin: all faculty, or filter by dept_id query param
     - Dept admin: all faculty in their department
     - Faculty: own profile only
     """
@@ -49,6 +55,11 @@ async def list_faculty(
         result = await db.execute(
             select(Faculty).where(Faculty.user_id == current_user.user_id)
         )
+    elif current_user.role == UserRole.SUPER_ADMIN:
+        query = select(Faculty)
+        if dept_id:
+            query = query.where(Faculty.dept_id == dept_id)
+        result = await db.execute(query)
     else:
         result = await db.execute(
             select(Faculty).where(Faculty.dept_id == current_user.dept_id)
@@ -72,6 +83,7 @@ async def get_faculty(
         raise HTTPException(status_code=403, detail="Cannot access other faculty profiles")
     if current_user.role == UserRole.DEPT_ADMIN and faculty.dept_id != current_user.dept_id:
         raise HTTPException(status_code=403, detail="Cannot access faculty from other departments")
+    # Super admin can access any faculty
     return FacultyResponse.model_validate(faculty)
 
 
@@ -82,11 +94,11 @@ async def update_faculty(
     current_user: User = Depends(require_any_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a faculty member. Dept admin only."""
+    """Update a faculty member. Admin only."""
     faculty = await db.get(Faculty, faculty_id)
     if not faculty:
         raise HTTPException(status_code=404, detail="Faculty not found")
-    if faculty.dept_id != current_user.dept_id:
+    if current_user.role == UserRole.DEPT_ADMIN and faculty.dept_id != current_user.dept_id:
         raise HTTPException(status_code=403, detail="Cannot modify faculty from other departments")
 
     update_data = request.model_dump(exclude_unset=True)
@@ -105,11 +117,11 @@ async def delete_faculty(
     current_user: User = Depends(require_any_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a faculty member. Dept admin only."""
+    """Delete a faculty member. Admin only."""
     faculty = await db.get(Faculty, faculty_id)
     if not faculty:
         raise HTTPException(status_code=404, detail="Faculty not found")
-    if faculty.dept_id != current_user.dept_id:
+    if current_user.role == UserRole.DEPT_ADMIN and faculty.dept_id != current_user.dept_id:
         raise HTTPException(status_code=403, detail="Cannot delete faculty from other departments")
 
     await db.delete(faculty)
