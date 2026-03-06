@@ -59,7 +59,7 @@ export function FacultyForm({ onSubmit, onCancel, isLoading }: FacultyFormProps)
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
       <div className="space-y-2">
         <Label>Full Name</Label>
-        <Input className="rounded-xl" placeholder="Dr. John Doe" {...register("name")} />
+        <Input className="rounded-xl" placeholder="Dr. Rajesh Patel" {...register("name")} />
         {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
       </div>
       <div className="space-y-2">

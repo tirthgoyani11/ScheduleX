@@ -13,8 +13,9 @@ import { SubjectsSkeleton } from "@/components/skeletons/PageSkeletons";
 
 export default function SubjectsPage() {
   const { currentSemester, setSemester } = useSetupStore();
-  const { data: allSubjects, isLoading, create, remove } = useSubjects(currentSemester);
+  const { data: allSubjects, isLoading, create, update, remove } = useSubjects(currentSemester);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingSubject, setEditingSubject] = useState<any>(null);
   const [newName, setNewName] = useState("");
   const [newCode, setNewCode] = useState("");
   const [newNeedsLab, setNewNeedsLab] = useState(false);
@@ -23,18 +24,44 @@ export default function SubjectsPage() {
   const [newBatchSize, setNewBatchSize] = useState(0);
   const [newBatch, setNewBatch] = useState("");
 
+  const handleEdit = (subject: any) => {
+    setEditingSubject(subject);
+    setNewName(subject.name);
+    setNewCode(subject.subject_code);
+    setNewNeedsLab(subject.needs_lab);
+    setNewCredits(subject.credits);
+    setNewPeriods(subject.weekly_periods);
+    setNewBatchSize(subject.batch_size || 0);
+    setNewBatch(subject.batch || "");
+    setDialogOpen(true);
+  };
+
   const handleAdd = async () => {
-    await create({
-      name: newName,
-      subject_code: newCode,
-      semester: currentSemester,
-      credits: newCredits,
-      weekly_periods: newPeriods,
-      needs_lab: newNeedsLab,
-      batch_size: newBatchSize,
-      batch: newBatch || undefined,
-    });
+    if (editingSubject) {
+      await update(editingSubject.subject_id, {
+        name: newName,
+        subject_code: newCode,
+        semester: currentSemester,
+        credits: newCredits,
+        weekly_periods: newPeriods,
+        needs_lab: newNeedsLab,
+        batch_size: newBatchSize,
+        batch: newBatch || undefined,
+      });
+    } else {
+      await create({
+        name: newName,
+        subject_code: newCode,
+        semester: currentSemester,
+        credits: newCredits,
+        weekly_periods: newPeriods,
+        needs_lab: newNeedsLab,
+        batch_size: newBatchSize,
+        batch: newBatch || undefined,
+      });
+    }
     setDialogOpen(false);
+    setEditingSubject(null);
     setNewName("");
     setNewCode("");
     setNewNeedsLab(false);
@@ -49,12 +76,12 @@ export default function SubjectsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Subjects" description="Manage subjects by semester">
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingSubject(null); setNewName(""); setNewCode(""); setNewNeedsLab(false); setNewCredits(3); setNewPeriods(3); setNewBatchSize(0); setNewBatch(""); } }}>
           <DialogTrigger asChild>
             <Button className="rounded-xl btn-press gap-2"><Plus className="h-4 w-4" />Add Subject</Button>
           </DialogTrigger>
           <DialogContent className="rounded-lg max-w-md">
-            <DialogHeader><DialogTitle className="font-display">Add Subject</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle className="font-display">{editingSubject ? "Edit Subject" : "Add Subject"}</DialogTitle></DialogHeader>
             <div className="space-y-4 mt-2">
               <div className="space-y-2">
                 <Label>Subject Name</Label>
@@ -103,7 +130,7 @@ export default function SubjectsPage() {
                   <Input className="rounded-xl" value={newBatch} onChange={(e) => setNewBatch(e.target.value)} placeholder="Batch A" />
                 </div>
               </div>
-              <Button onClick={handleAdd} className="w-full rounded-xl btn-press">Add Subject</Button>
+              <Button onClick={handleAdd} className="w-full rounded-xl btn-press">{editingSubject ? "Update Subject" : "Add Subject"}</Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -151,6 +178,7 @@ export default function SubjectsPage() {
                   <td className="py-3 px-4">{sub.batch || "—"}</td>
                   <td className="py-3 px-4">
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
+                      <Button variant="ghost" size="icon" className="rounded-xl h-7 w-7" onClick={() => handleEdit(sub)}><Pencil className="h-3.5 w-3.5" /></Button>
                       <Button variant="ghost" size="icon" className="rounded-xl h-7 w-7 text-destructive" onClick={() => remove(sub.subject_id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </div>
                   </td>

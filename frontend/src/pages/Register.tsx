@@ -74,7 +74,7 @@ export default function RegisterPage() {
             </div>
             <div className="space-y-2">
               <Label>Your Name</Label>
-              <Input className="rounded-xl" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Dr. John Doe" />
+              <Input className="rounded-xl" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Dr. Rajesh Patel" />
             </div>
             <div className="space-y-2">
               <Label>Email</Label>

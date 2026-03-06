@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2, DoorOpen } from "lucide-react";
+import { Plus, Pencil, Trash2, DoorOpen } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/common/StatusChip";
@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export default function RoomsPage() {
-  const { data: rooms, isLoading, create, remove } = useRooms();
+  const { data: rooms, isLoading, create, update, remove } = useRooms();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<any>(null);
   const [name, setName] = useState("");
   const [capacity, setCapacity] = useState(60);
   const [roomType, setRoomType] = useState<string>("classroom");
@@ -19,16 +20,39 @@ export default function RoomsPage() {
   const [hasComputers, setHasComputers] = useState(false);
   const [hasAc, setHasAc] = useState(false);
 
+  const handleEdit = (room: any) => {
+    setEditingRoom(room);
+    setName(room.name);
+    setCapacity(room.capacity);
+    setRoomType(room.room_type);
+    setHasProjector(room.has_projector || false);
+    setHasComputers(room.has_computers || false);
+    setHasAc(room.has_ac || false);
+    setDialogOpen(true);
+  };
+
   const handleAdd = async () => {
-    await create({
-      name,
-      capacity,
-      room_type: roomType,
-      has_projector: hasProjector,
-      has_computers: hasComputers,
-      has_ac: hasAc,
-    });
+    if (editingRoom) {
+      await update(editingRoom.room_id, {
+        name,
+        capacity,
+        room_type: roomType,
+        has_projector: hasProjector,
+        has_computers: hasComputers,
+        has_ac: hasAc,
+      });
+    } else {
+      await create({
+        name,
+        capacity,
+        room_type: roomType,
+        has_projector: hasProjector,
+        has_computers: hasComputers,
+        has_ac: hasAc,
+      });
+    }
     setDialogOpen(false);
+    setEditingRoom(null);
     setName("");
     setCapacity(60);
     setRoomType("classroom");
@@ -44,12 +68,12 @@ export default function RoomsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Rooms & Labs" description="Manage classrooms and lab spaces">
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingRoom(null); setName(""); setCapacity(60); setRoomType("classroom"); setHasProjector(false); setHasComputers(false); setHasAc(false); } }}>
           <DialogTrigger asChild>
             <Button className="rounded-xl btn-press gap-2"><Plus className="h-4 w-4" />Add Room</Button>
           </DialogTrigger>
           <DialogContent className="rounded-lg max-w-md">
-            <DialogHeader><DialogTitle className="font-display">Add Room</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle className="font-display">{editingRoom ? "Edit Room" : "Add Room"}</DialogTitle></DialogHeader>
             <div className="space-y-4 mt-2">
               <div className="space-y-2">
                 <Label>Room Name</Label>
@@ -99,7 +123,7 @@ export default function RoomsPage() {
                   ))}
                 </div>
               </div>
-              <Button onClick={handleAdd} className="w-full rounded-xl btn-press" disabled={!name.trim()}>Add Room</Button>
+              <Button onClick={handleAdd} className="w-full rounded-xl btn-press" disabled={!name.trim()}>{editingRoom ? "Update Room" : "Add Room"}</Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -140,6 +164,9 @@ export default function RoomsPage() {
                   </td>
                   <td className="py-3 px-4">
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
+                      <Button variant="ghost" size="icon" className="rounded-xl h-7 w-7" onClick={() => handleEdit(room)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
                       <Button variant="ghost" size="icon" className="rounded-xl h-7 w-7 text-destructive" onClick={() => remove(room.room_id)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
