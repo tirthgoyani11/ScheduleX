@@ -4,9 +4,10 @@ Seed the database with realistic initial data:
   - College, Department
   - Super admin + Dept admin users
   - 6 Faculty members
-  - 8 Subjects (with labs)
+  - 7 Subjects (with lecture_hours + lab_hours)
   - 5 Rooms (classrooms + labs)
   - 8 Time slots (lectures, break, labs)
+  - 4 Batches (A, B, C, D)
 
 Usage: python scripts/seed.py
 """
@@ -25,6 +26,7 @@ from models.faculty import Faculty
 from models.subject import Subject
 from models.room import Room, RoomType
 from models.timeslot import TimeSlotConfig, SlotType
+from models.batch import Batch
 from utils.security import hash_password
 
 
@@ -104,20 +106,22 @@ async def seed():
                 preferred_time=pref,
             ))
 
-        # ── Subjects ──
+        # ── Subjects (with lecture_hours + lab_hours) ──
+        # lecture_hours = theory periods per week
+        # lab_hours     = lab sessions per week (each = 1 lab-type period)
+        # weekly_periods = lecture_hours + lab_hours (total contact per batch)
         subject_data = [
-            # (name, code, semester, credits, weekly_periods, needs_lab, batch_size, batch)
-            ("Computer Networks",       "CS301", 5, 4, 4, True,  60, "CE-3A"),
-            ("Operating Systems",       "CS302", 5, 4, 4, True,  60, "CE-3A"),
-            ("Database Management",     "CS303", 5, 3, 3, True,  60, "CE-3A"),
-            ("Software Engineering",    "CS304", 5, 3, 3, False, 60, "CE-3A"),
-            ("Design & Analysis of Algorithms", "CS305", 5, 4, 4, False, 60, "CE-3A"),
-            ("Theory of Computation",   "CS306", 5, 3, 3, False, 60, "CE-3A"),
-            ("Web Programming",         "CS307", 5, 3, 3, True,  60, "CE-3A"),
-            ("Computer Networks",       "CS301B", 5, 4, 4, True,  60, "CE-3B"),
+            # (name, code, sem, credits, lec_hrs, lab_hrs, batch_size)
+            ("Computer Networks",       "CS301", 5, 4, 3, 1, 60),
+            ("Operating Systems",       "CS302", 5, 4, 3, 1, 60),
+            ("Database Management",     "CS303", 5, 3, 3, 1, 60),
+            ("Software Engineering",    "CS304", 5, 3, 3, 0, 60),
+            ("Design & Analysis of Algorithms", "CS305", 5, 4, 3, 0, 60),
+            ("Theory of Computation",   "CS306", 5, 3, 3, 0, 60),
+            ("Web Programming",         "CS307", 5, 3, 3, 1, 60),
         ]
         subject_ids = []
-        for name, code, sem, credits, wp, lab, bs, batch in subject_data:
+        for name, code, sem, credits, lh, lab_h, bs in subject_data:
             sid = str(uuid.uuid4())
             subject_ids.append(sid)
             db.add(Subject(
@@ -127,10 +131,11 @@ async def seed():
                 subject_code=code,
                 semester=sem,
                 credits=credits,
-                weekly_periods=wp,
-                needs_lab=lab,
+                weekly_periods=lh + lab_h,
+                lecture_hours=lh,
+                lab_hours=lab_h,
+                needs_lab=lab_h > 0,
                 batch_size=bs,
-                batch=batch,
             ))
 
         # ── Rooms ──
@@ -138,8 +143,10 @@ async def seed():
             ("Room 301",  60, RoomType.CLASSROOM, True,  False, False),
             ("Room 302",  60, RoomType.CLASSROOM, True,  False, True),
             ("Room 303",  90, RoomType.CLASSROOM, True,  False, False),
-            ("CS Lab 1",  60, RoomType.LAB,       True,  True,  True),
-            ("CS Lab 2",  60, RoomType.LAB,       True,  True,  True),
+            ("CS Lab 1",  30, RoomType.LAB,       True,  True,  True),
+            ("CS Lab 2",  30, RoomType.LAB,       True,  True,  True),
+            ("CS Lab 3",  30, RoomType.LAB,       True,  True,  True),
+            ("CS Lab 4",  30, RoomType.LAB,       True,  True,  True),
         ]
         for name, cap, rtype, proj, comp, ac in room_data:
             db.add(Room(
@@ -175,6 +182,16 @@ async def seed():
                 slot_type=stype,
             ))
 
+        # ── Batches (4 batches for lab rotation) ──
+        for batch_name in ["A", "B", "C", "D"]:
+            db.add(Batch(
+                batch_id=str(uuid.uuid4()),
+                dept_id=dept_id,
+                semester=5,
+                name=batch_name,
+                size=15,   # 60 students / 4 batches
+            ))
+
         await db.commit()
         print("Seed data created successfully!")
         print(f"  College: CVM University")
@@ -186,11 +203,12 @@ async def seed():
         for name, emp_id, *_ in faculty_data:
             print(f"    {emp_id} - {name}")
         print(f"  Subjects: {len(subject_data)} subjects")
-        for name, code, *_ in subject_data:
-            print(f"    {code} - {name}")
+        for name, code, sem, cr, lh, lab_h, *_ in subject_data:
+            print(f"    {code} - {name} (L:{lh} Lab:{lab_h})")
         print(f"  Rooms: {len(room_data)} rooms")
         for name, cap, rtype, *_ in room_data:
             print(f"    {name} ({rtype.value}, cap={cap})")
+        print(f"  Batches: A, B, C, D (15 students each)")
         print(f"  Time Slots: {len(slot_data)} slots")
 
 

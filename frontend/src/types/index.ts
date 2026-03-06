@@ -62,9 +62,21 @@ export interface Subject {
   semester: number;
   credits: number;
   weekly_periods: number;
+  lecture_hours: number;
+  lab_hours: number;
   needs_lab: boolean;
   batch_size: number;
   batch: string | null;
+  created_at: string;
+}
+
+// ── Batch ────────────────────────────────────────────────
+export interface Batch {
+  batch_id: string;
+  dept_id: string;
+  semester: number;
+  name: string;
+  size: number;
   created_at: string;
 }
 
