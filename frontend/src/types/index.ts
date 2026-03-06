@@ -160,23 +160,25 @@ export interface SubstitutionCandidate {
   preferred_time: string | null;
 }
 
-// ── Time Slots (display only, periods are 1-8 in backend) ──
+// ── Time Slots (configurable per college, stored in backend) ──
 export interface TimeSlot {
-  period: number;
+  slot_id: string;
+  college_id: string;
+  slot_order: number;
   label: string;
-  startTime: string;
-  endTime: string;
-  type: "LECTURE" | "LAB";
+  start_time: string;   // "HH:MM"
+  end_time: string;      // "HH:MM"
+  slot_type: "lecture" | "lab" | "break";
 }
 
-// Default time slots for display (configurable per college)
+// Legacy helper — period number from slot_order, display times
 export const DEFAULT_TIME_SLOTS: TimeSlot[] = [
-  { period: 1, label: "Period 1", startTime: "09:00", endTime: "10:00", type: "LECTURE" },
-  { period: 2, label: "Period 2", startTime: "10:00", endTime: "11:00", type: "LECTURE" },
-  { period: 3, label: "Period 3", startTime: "11:00", endTime: "12:00", type: "LECTURE" },
-  { period: 4, label: "Period 4", startTime: "12:00", endTime: "13:00", type: "LECTURE" },
-  { period: 5, label: "Lunch", startTime: "13:00", endTime: "14:00", type: "LECTURE" },
-  { period: 6, label: "Period 5", startTime: "14:00", endTime: "15:00", type: "LECTURE" },
-  { period: 7, label: "Lab 1", startTime: "15:00", endTime: "17:00", type: "LAB" },
-  { period: 8, label: "Lab 2", startTime: "17:00", endTime: "19:00", type: "LAB" },
+  { slot_id: "", college_id: "", slot_order: 1, label: "Period 1", start_time: "09:00", end_time: "10:00", slot_type: "lecture" },
+  { slot_id: "", college_id: "", slot_order: 2, label: "Period 2", start_time: "10:00", end_time: "11:00", slot_type: "lecture" },
+  { slot_id: "", college_id: "", slot_order: 3, label: "Period 3", start_time: "11:00", end_time: "12:00", slot_type: "lecture" },
+  { slot_id: "", college_id: "", slot_order: 4, label: "Period 4", start_time: "12:00", end_time: "13:00", slot_type: "lecture" },
+  { slot_id: "", college_id: "", slot_order: 5, label: "Lunch",    start_time: "13:00", end_time: "14:00", slot_type: "break" },
+  { slot_id: "", college_id: "", slot_order: 6, label: "Period 5", start_time: "14:00", end_time: "15:00", slot_type: "lecture" },
+  { slot_id: "", college_id: "", slot_order: 7, label: "Lab 1",    start_time: "15:00", end_time: "17:00", slot_type: "lab" },
+  { slot_id: "", college_id: "", slot_order: 8, label: "Lab 2",    start_time: "17:00", end_time: "19:00", slot_type: "lab" },
 ];

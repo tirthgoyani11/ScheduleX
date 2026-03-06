@@ -27,9 +27,44 @@ PENALTY_WEIGHTS = {
     "consistent_pattern":   20,
 }
 
-LUNCH_PERIODS = [4, 5]          # Periods 4–5 assumed 12:00–14:00
-MORNING_PERIODS = set([1, 2, 3, 4])
-AFTERNOON_PERIODS = set([5, 6, 7, 8])
+
+def _detect_break_neighbours(data: dict) -> list[int]:
+    """Return periods immediately before and after a break slot (for lunch penalty)."""
+    slot_lookup = data.get("slot_lookup", {})
+    if not slot_lookup:
+        return [4, 5]  # legacy fallback
+    break_orders = sorted(
+        order for order, s in slot_lookup.items()
+        if s.slot_type.value == "break"
+    )
+    if not break_orders:
+        return [4, 5]
+    # Periods adjacent to break(s): the schedulable period just before and just after
+    neighbours = set()
+    for b in break_orders:
+        neighbours.add(b - 1)
+        neighbours.add(b + 1)
+    # Keep only orders that are actual schedulable periods
+    valid_periods = set(data.get("periods", []))
+    return sorted(neighbours & valid_periods)
+
+
+def _morning_afternoon_split(data: dict) -> tuple[set[int], set[int]]:
+    """Split periods into morning/afternoon based on slot start_time."""
+    slot_lookup = data.get("slot_lookup", {})
+    periods = data.get("periods", list(range(1, 9)))
+    if not slot_lookup:
+        mid = len(periods) // 2
+        return set(periods[:mid]), set(periods[mid:])
+    morning = set()
+    afternoon = set()
+    for p in periods:
+        slot = slot_lookup.get(p)
+        if slot and slot.start_time < "12:00":
+            morning.add(p)
+        else:
+            afternoon.add(p)
+    return morning, afternoon
 
 
 def apply_soft_constraints(
@@ -51,21 +86,25 @@ def apply_soft_constraints(
 
     log.info("applying_soft_constraints")
 
+    # Derive break/morning/afternoon from configured slots
+    lunch_periods = _detect_break_neighbours(data)
+    morning_periods, afternoon_periods = _morning_afternoon_split(data)
+
     # ── SC1: Guarantee lunch break (weight: 100) ─────────────────────────────
-    # Penalize if BOTH lunch periods are occupied for a faculty on a day
+    # Penalize if BOTH lunch-adjacent periods are occupied for a faculty on a day
     for faculty in data["faculty"]:
         fid = faculty.faculty_id
         for day in days:
             lunch_vars = []
-            for lp in LUNCH_PERIODS:
+            for lp in lunch_periods:
                 lunch_vars.extend(by_faculty_slot.get((fid, day, lp), []))
             if len(lunch_vars) >= 2:
                 lunch_penalty = model.NewBoolVar(f"lp_{fid[:8]}_{day[:3]}")
                 model.Add(
-                    sum(lunch_vars) >= len(LUNCH_PERIODS)
+                    sum(lunch_vars) >= len(lunch_periods)
                 ).OnlyEnforceIf(lunch_penalty)
                 model.Add(
-                    sum(lunch_vars) < len(LUNCH_PERIODS)
+                    sum(lunch_vars) < len(lunch_periods)
                 ).OnlyEnforceIf(lunch_penalty.Not())
                 penalties.append(lunch_penalty * PENALTY_WEIGHTS["lunch_break"])
 
@@ -112,8 +151,8 @@ def apply_soft_constraints(
         if faculty.preferred_time in ("morning", "afternoon"):
             fid = faculty.faculty_id
             wrong_periods = (
-                AFTERNOON_PERIODS if faculty.preferred_time == "morning"
-                else MORNING_PERIODS
+                afternoon_periods if faculty.preferred_time == "morning"
+                else morning_periods
             )
             faculty_entries = by_faculty.get(fid, [])
             for (f, s, r, d, p), var in faculty_entries:

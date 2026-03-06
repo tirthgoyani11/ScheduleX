@@ -10,6 +10,7 @@ from models.substitution import Substitution, SubstitutionRequest, SubstitutionS
 from models.notification import NotificationLog, NotificationChannel, NotificationStatus, NotificationEventType
 from models.exam import ExamTimetable, ExamEntry, InvigilatorAssignment, StudentExamEnrolment
 from models.audit import AuditLog
+from models.timeslot import TimeSlotConfig, SlotType
 
 __all__ = [
     "College", "Department",
@@ -23,4 +24,5 @@ __all__ = [
     "NotificationLog", "NotificationChannel", "NotificationStatus", "NotificationEventType",
     "ExamTimetable", "ExamEntry", "InvigilatorAssignment", "StudentExamEnrolment",
     "AuditLog",
+    "TimeSlotConfig", "SlotType",
 ]

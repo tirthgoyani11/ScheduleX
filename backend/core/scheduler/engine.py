@@ -26,6 +26,7 @@ from models.faculty import Faculty, FacultyGeneralBlock
 from models.subject import Subject
 from models.room import Room
 from models.college import Department
+from models.timeslot import TimeSlotConfig, SlotType
 
 from core.scheduler.variables import build_variables
 from core.scheduler.hard_constraints import apply_hard_constraints
@@ -224,6 +225,25 @@ async def _load_scheduling_data(
         for sid in sids:
             faculty_subject_map.setdefault(sid, []).append(fid)
 
+    # ── Load configurable time slots from DB ──────────────────────────────────
+    slot_result = await db.execute(
+        select(TimeSlotConfig)
+        .where(TimeSlotConfig.college_id == college_id)
+        .order_by(TimeSlotConfig.slot_order)
+    )
+    all_slots = slot_result.scalars().all()
+
+    # Only schedulable slots (lecture/lab) become solver periods; breaks are skipped
+    schedulable_slots = [s for s in all_slots if s.slot_type != SlotType.BREAK]
+    periods = [s.slot_order for s in schedulable_slots]
+
+    # Fallback: if no slots configured, use legacy 1-8
+    if not periods:
+        periods = list(range(1, 9))
+
+    # Build a lookup for soft constraints (break detection, etc.)
+    slot_lookup = {s.slot_order: s for s in all_slots}
+
     return {
         "timetable": timetable,
         "college_id": college_id,
@@ -234,7 +254,9 @@ async def _load_scheduling_data(
         "general_blocks": general_blocks,
         "faculty_subject_map": faculty_subject_map,
         "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-        "periods": list(range(1, 9)),  # 8 periods per day
+        "periods": periods,
+        "all_slots": all_slots,
+        "slot_lookup": slot_lookup,
     }
 
 

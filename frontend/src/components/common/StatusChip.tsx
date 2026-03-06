@@ -34,8 +34,11 @@ export function getSubjectChipVariant(needsLab: boolean): ChipVariant {
   return needsLab ? "lab" : "theory";
 }
 
-export function getSlotChipVariant(type: "LECTURE" | "LAB"): ChipVariant {
-  return type === "LECTURE" ? "lecture" : "lab";
+export function getSlotChipVariant(type: string): ChipVariant {
+  const lower = type.toLowerCase();
+  if (lower === "lab") return "lab";
+  if (lower === "break") return "conflict";
+  return "lecture";
 }
 
 export function getSeverityChipVariant(s: string): ChipVariant {

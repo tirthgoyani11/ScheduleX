@@ -3,15 +3,16 @@ import { AlertTriangle, Download, Check, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { StatusChip, getStatusChipVariant } from "@/components/common/StatusChip";
-import { DEFAULT_TIME_SLOTS } from "@/types";
 import { SubjectCell } from "@/components/timetable/SubjectCell";
 import { useTimetable } from "@/hooks/useTimetable";
+import { useTimeSlots } from "@/hooks/useTimeSlots";
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 export default function TimetableViewPage() {
   const { id } = useParams<{ id: string }>();
   const { timetable: tt, timetableLoading, publish } = useTimetable(id);
+  const { data: slots } = useTimeSlots();
 
   if (timetableLoading) {
     return (
@@ -59,15 +60,24 @@ export default function TimetableViewPage() {
             </tr>
           </thead>
           <tbody>
-            {DEFAULT_TIME_SLOTS.map((slot) => (
-              <tr key={slot.period}>
+            {slots.map((slot) => (
+              <tr key={slot.slot_order} className={slot.slot_type === "break" ? "bg-muted/30" : ""}>
                 <td className="sticky left-0 z-10 bg-card py-2 px-3 border-r border-b border-border">
-                  <div className="text-xs font-medium">{slot.startTime}</div>
-                  <div className="text-xs text-muted-foreground">{slot.endTime}</div>
+                  <div className="text-xs font-medium">{slot.start_time}</div>
+                  <div className="text-xs text-muted-foreground">{slot.end_time}</div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">{slot.label}</div>
                 </td>
                 {days.map((day) => {
-                  const entry = tt.entries.find((e) => e.day === day && e.period === slot.period);
+                  if (slot.slot_type === "break") {
+                    return (
+                      <td key={day} className="py-2 px-2 border-b border-border bg-muted/30">
+                        <div className="min-h-[70px] flex items-center justify-center">
+                          <span className="text-xs text-muted-foreground italic">{slot.label}</span>
+                        </div>
+                      </td>
+                    );
+                  }
+                  const entry = tt.entries.find((e) => e.day === day && e.period === slot.slot_order);
                   if (!entry) {
                     return (
                       <td key={day} className="py-2 px-2 border-b border-border">

@@ -1,6 +1,6 @@
-import { DEFAULT_TIME_SLOTS } from "@/types";
 import { SubjectCell } from "@/components/timetable/SubjectCell";
-import type { TimetableEntry } from "@/types";
+import type { TimetableEntry, TimeSlot } from "@/types";
+import { useTimeSlots } from "@/hooks/useTimeSlots";
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -9,6 +9,8 @@ interface WeeklyGridProps {
 }
 
 export function WeeklyGrid({ entries }: WeeklyGridProps) {
+  const { data: slots } = useTimeSlots();
+
   return (
     <div className="bg-card rounded-lg shadow-sm overflow-x-auto">
       <table className="w-full border-collapse min-w-[800px]">
@@ -28,15 +30,24 @@ export function WeeklyGrid({ entries }: WeeklyGridProps) {
           </tr>
         </thead>
         <tbody>
-          {DEFAULT_TIME_SLOTS.map((slot) => (
-            <tr key={slot.period}>
+          {slots.map((slot) => (
+            <tr key={slot.slot_order} className={slot.slot_type === "break" ? "bg-muted/30" : ""}>
               <td className="sticky left-0 z-10 bg-card py-2 px-3 border-r border-b border-border">
-                <div className="text-xs font-medium">{slot.startTime}</div>
-                <div className="text-xs text-muted-foreground">{slot.endTime}</div>
+                <div className="text-xs font-medium">{slot.start_time}</div>
+                <div className="text-xs text-muted-foreground">{slot.end_time}</div>
                 <div className="text-[10px] text-muted-foreground mt-0.5">{slot.label}</div>
               </td>
               {days.map((day) => {
-                const entry = entries.find((e) => e.day === day && e.period === slot.period);
+                if (slot.slot_type === "break") {
+                  return (
+                    <td key={day} className="py-2 px-2 border-b border-border bg-muted/30">
+                      <div className="min-h-[70px] flex items-center justify-center">
+                        <span className="text-xs text-muted-foreground italic">{slot.label}</span>
+                      </div>
+                    </td>
+                  );
+                }
+                const entry = entries.find((e) => e.day === day && e.period === slot.slot_order);
                 if (!entry) {
                   return (
                     <td key={day} className="py-2 px-2 border-b border-border">

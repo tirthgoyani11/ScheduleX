@@ -88,6 +88,7 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
             constraint_count += 1
 
     # ── HC9: No more than 3 consecutive periods for same faculty ──────────────
+    sorted_periods = sorted(periods)
     for faculty in data["faculty"]:
         fid = faculty.faculty_id
         for day in days:
@@ -99,8 +100,8 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
             for p, var in day_entries:
                 period_vars.setdefault(p, []).append(var)
 
-            for start_period in range(1, len(periods) - 2):
-                window = range(start_period, start_period + 4)
+            for i in range(len(sorted_periods) - 3):
+                window = sorted_periods[i:i + 4]
                 window_vars = []
                 for p in window:
                     window_vars.extend(period_vars.get(p, []))
