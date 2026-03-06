@@ -18,6 +18,130 @@ from datetime import datetime, timezone
 router = APIRouter(prefix="/timetable", tags=["Timetable"])
 
 
+@router.get("/auto-assign")
+async def auto_assign_faculty(
+    semester: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Auto-assign faculty to subjects for a given semester using expertise matching.
+
+    Matching strategy:
+    1. Exact match: faculty.expertise contains the subject_code (e.g. "CS301")
+    2. Prefix match: faculty.expertise item is a prefix of subject_code (e.g. "CN" matches "CN", "CS301")
+    3. Name keyword: expertise keyword appears in subject name (e.g. "CN" in "Computer Networks")
+
+    Returns: { subject_id: faculty_id } for each subject that could be matched.
+    Faculty load balancing is applied: prefer faculty with fewer assignments.
+    """
+    from models.faculty import Faculty
+    from models.subject import Subject
+
+    fac_result = await db.execute(
+        select(Faculty).where(Faculty.dept_id == current_user.dept_id)
+    )
+    faculty_list = fac_result.scalars().all()
+
+    sub_result = await db.execute(
+        select(Subject).where(
+            Subject.dept_id == current_user.dept_id,
+            Subject.semester == semester,
+        )
+    )
+    subject_list = sub_result.scalars().all()
+
+    # Build name-keyword mapping for subjects
+    # e.g. "Computer Networks" -> ["computer", "networks"]
+    subject_keywords: dict[str, list[str]] = {}
+    for sub in subject_list:
+        subject_keywords[sub.subject_id] = [
+            w.lower() for w in sub.name.split() if len(w) > 2
+        ]
+
+    # Common abbreviation mapping for expertise matching
+    abbreviation_map = {
+        "cn": ["computer networks", "computer network"],
+        "os": ["operating systems", "operating system"],
+        "dbms": ["database management", "database"],
+        "se": ["software engineering"],
+        "daa": ["design & analysis of algorithms", "design and analysis", "algorithms"],
+        "toc": ["theory of computation"],
+        "wp": ["web programming", "web development"],
+        "ds": ["data structures", "data structure"],
+        "ai": ["artificial intelligence"],
+        "ml": ["machine learning"],
+        "cd": ["compiler design"],
+        "coa": ["computer organization", "computer architecture"],
+    }
+
+    # Track load per faculty for balancing
+    faculty_load: dict[str, int] = {f.faculty_id: 0 for f in faculty_list}
+    assignments: dict[str, str] = {}  # subject_id -> faculty_id
+
+    def match_score(faculty: Faculty, subject: Subject) -> int:
+        """Score how well a faculty matches a subject. Higher = better. 0 = no match."""
+        expertise = [e.lower().strip() for e in (faculty.expertise or [])]
+        code_lower = subject.subject_code.lower()
+        name_lower = subject.name.lower()
+        score = 0
+
+        for exp in expertise:
+            # Exact code match (highest priority)
+            if exp == code_lower:
+                score = max(score, 100)
+            # Code starts with expertise (e.g. "cs301" starts with "cs301b" won't match,
+            # but "cs301" expertise matching "cs301" subject would)
+            elif code_lower.startswith(exp):
+                score = max(score, 80)
+            # Abbreviation match
+            elif exp in abbreviation_map:
+                for phrase in abbreviation_map[exp]:
+                    if phrase in name_lower:
+                        score = max(score, 70)
+                        break
+            # Keyword in subject name
+            elif exp in name_lower:
+                score = max(score, 60)
+            # Check if any subject name keyword matches expertise
+            elif any(kw in exp for kw in subject_keywords.get(subject.subject_id, [])):
+                score = max(score, 40)
+
+        return score
+
+    # Sort subjects by weekly_periods descending (assign heaviest first)
+    sorted_subjects = sorted(subject_list, key=lambda s: s.weekly_periods, reverse=True)
+
+    for subject in sorted_subjects:
+        candidates = []
+        for faculty in faculty_list:
+            score = match_score(faculty, subject)
+            if score > 0:
+                # Penalize overloaded faculty
+                load_penalty = faculty_load[faculty.faculty_id] * 5
+                candidates.append((score - load_penalty, faculty))
+
+        if candidates:
+            # Best scoring, then least loaded
+            candidates.sort(key=lambda x: (-x[0], faculty_load[x[1].faculty_id]))
+            best_faculty = candidates[0][1]
+            assignments[subject.subject_id] = best_faculty.faculty_id
+            faculty_load[best_faculty.faculty_id] += subject.weekly_periods
+        else:
+            # No match found — assign least loaded faculty as fallback
+            if faculty_list:
+                least_loaded = min(faculty_list, key=lambda f: faculty_load[f.faculty_id])
+                assignments[subject.subject_id] = least_loaded.faculty_id
+                faculty_load[least_loaded.faculty_id] += subject.weekly_periods
+
+    # Convert to {faculty_id: [subject_ids]} for frontend
+    result: dict[str, list[str]] = {}
+    for sid, fid in assignments.items():
+        result.setdefault(fid, []).append(sid)
+
+    return result
+
+
 @router.get("", response_model=list[TimetableResponse])
 async def list_timetables(
     current_user: User = Depends(get_current_user),
