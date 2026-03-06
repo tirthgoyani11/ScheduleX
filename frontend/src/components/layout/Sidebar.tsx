@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Settings2, CalendarDays, Download, Building2, Sparkles,
   ChevronLeft, ChevronRight, ChevronDown, Clock, BookOpen, Users, DoorOpen,
-  Zap, Eye, AlertTriangle, LogOut, Shield, UserCog, CalendarClock,
+  Zap, Eye, AlertTriangle, LogOut, Shield, UserCog, CalendarClock, FileUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
     roles: ["super_admin"],
     children: [
       { label: "User Management", path: "/admin/users", icon: UserCog, roles: ["super_admin"] },
+      { label: "Data Import", path: "/admin/pdf-import", icon: FileUp, roles: ["super_admin"] },
     ],
   },
   {

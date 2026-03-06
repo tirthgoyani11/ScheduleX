@@ -54,7 +54,7 @@ import models  # noqa: F401
 from routers import auth, college, department, faculty, subject, room
 from routers import timetable, substitution, notification, exam, nlq, analytics
 from routers import websocket, webhook, timeslot, batch, scheduling
-from routers import export, chat
+from routers import export, chat, pdf_import
 
 app.include_router(auth.router)
 app.include_router(college.router)
@@ -75,6 +75,7 @@ app.include_router(webhook.router)
 app.include_router(scheduling.router)
 app.include_router(export.router)
 app.include_router(chat.router)
+app.include_router(pdf_import.router)
 
 
 # ── Health Check ───────────────────────────────────────────────
