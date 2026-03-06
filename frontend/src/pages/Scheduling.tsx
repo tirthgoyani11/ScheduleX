@@ -252,9 +252,9 @@ function RescheduleForm({
 
   const entry = timetable?.entries.find((e) => e.entry_id === entryId);
 
-  // Auto-fetch free slots + rooms when an entry is selected (optionally filtered by date)
+  // Always fetch all free slots across the week (no date filter) — shows where faculty + students are both free
   const { data: options = [], isLoading: optionsLoading } = scheduling.useRescheduleOptions(
-    entryId || undefined, targetDate || undefined
+    entryId || undefined, undefined
   );
 
   // Find the rooms for the currently selected slot
@@ -262,15 +262,38 @@ function RescheduleForm({
     ? options.find((o) => o.day === selectedSlot.day && o.period === selectedSlot.period)
     : null;
 
+  // Generate upcoming dates matching the selected day (next 4 weeks)
+  const availableDates = useMemo(() => {
+    if (!selectedSlot) return [];
+    const dayIndex = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].indexOf(selectedSlot.day);
+    if (dayIndex < 0) return [];
+    const dates: string[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // Start from tomorrow
+    const start = new Date(today);
+    start.setDate(start.getDate() + 1);
+    for (let i = 0; i < 28; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      if (d.getDay() === dayIndex) {
+        dates.push(d.toISOString().slice(0, 10));
+      }
+    }
+    return dates;
+  }, [selectedSlot]);
+
   const handleSelectEntry = (id: string) => {
     setEntryId(id);
     setSelectedSlot(null);
     setSelectedRoomId("");
+    setTargetDate("");
   };
 
   const handleSelectSlot = (day: string, period: number) => {
     setSelectedSlot({ day, period });
     setSelectedRoomId("");
+    setTargetDate("");
   };
 
   const handleSubmit = () => {
@@ -286,7 +309,16 @@ function RescheduleForm({
   };
 
   // Group entries by faculty for selection
-  const entries = timetable?.entries.filter((e) => e.entry_type === "regular") || [];
+  // Faculty users only see their own lectures
+  const user = useAuthStore((s) => s.user);
+  const isFaculty = user?.role === "faculty";
+  const entries = useMemo(() => {
+    const all = timetable?.entries.filter((e) => e.entry_type === "regular") || [];
+    if (isFaculty && user?.full_name) {
+      return all.filter((e) => e.faculty_name === user.full_name);
+    }
+    return all;
+  }, [timetable, isFaculty, user]);
   const grouped = useMemo(() => {
     const m = new Map<string, typeof entries>();
     for (const e of entries) {
@@ -312,33 +344,23 @@ function RescheduleForm({
         <CardTitle className="text-lg">Reschedule a Lecture</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Step 1 — Select entry + optional date */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2 md:col-span-2">
-            <Label>Step 1: Select Lecture to Reschedule</Label>
-            <Select value={entryId} onValueChange={handleSelectEntry}>
-              <SelectTrigger>
-                <SelectValue placeholder="Choose a lecture..." />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from(grouped.entries()).map(([fName, entryList]) => (
-                  entryList.map((e) => (
-                    <SelectItem key={e.entry_id} value={e.entry_id}>
-                      {fName} — {e.subject_name} ({e.day}, P{e.period})
-                    </SelectItem>
-                  ))
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Target Date (optional — filters to that day)</Label>
-            <Input
-              type="date"
-              value={targetDate}
-              onChange={(e) => { setTargetDate(e.target.value); setSelectedSlot(null); setSelectedRoomId(""); }}
-            />
-          </div>
+        {/* Step 1 — Select entry */}
+        <div className="space-y-2">
+          <Label>Step 1: Select Lecture to Reschedule</Label>
+          <Select value={entryId} onValueChange={handleSelectEntry}>
+            <SelectTrigger className="w-full md:w-2/3">
+              <SelectValue placeholder="Choose a lecture..." />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from(grouped.entries()).map(([fName, entryList]) => (
+                entryList.map((e) => (
+                  <SelectItem key={e.entry_id} value={e.entry_id}>
+                    {fName} — {e.subject_name} ({e.day}, P{e.period})
+                  </SelectItem>
+                ))
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {entryId && entry && (
@@ -347,7 +369,6 @@ function RescheduleForm({
             <p><strong>Subject:</strong> {entry.subject_name}</p>
             <p><strong>Faculty:</strong> {entry.faculty_name}</p>
             <p><strong>Room:</strong> {entry.room_name}</p>
-            {targetDate && <p><strong>Checking for:</strong> {targetDate} ({new Date(targetDate + "T00:00").toLocaleDateString("en-US", { weekday: "long" })})</p>}
           </div>
         )}
 
@@ -383,7 +404,7 @@ function RescheduleForm({
                           onClick={() => handleSelectSlot(opt.day, opt.period)}
                         >
                           <TableCell className="font-medium">{opt.day}</TableCell>
-                          <TableCell>P{opt.period} — {opt.slot_label}</TableCell>
+                          <TableCell>{opt.slot_label}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">{opt.start_time} – {opt.end_time}</TableCell>
                           <TableCell>
                             <Badge variant="secondary">{opt.free_rooms.length} room{opt.free_rooms.length !== 1 ? "s" : ""}</Badge>
@@ -401,10 +422,29 @@ function RescheduleForm({
           </div>
         )}
 
-        {/* Step 3 — Select room for the chosen slot */}
-        {selectedSlot && selectedSlotData && (
+        {/* Step 2b — Select date for the rescheduled lecture */}
+        {selectedSlot && (
           <div className="space-y-2">
-            <Label>Step 3: Select Room ({selectedSlotData.free_rooms.length} available on {selectedSlot.day}, P{selectedSlot.period})</Label>
+            <Label>Select Date for Rescheduled Lecture (only {selectedSlot.day}s)</Label>
+            <Select value={targetDate} onValueChange={setTargetDate}>
+              <SelectTrigger className="w-full md:w-80">
+                <SelectValue placeholder="Choose a date..." />
+              </SelectTrigger>
+              <SelectContent>
+                {availableDates.map((d) => (
+                  <SelectItem key={d} value={d}>
+                    {new Date(d + "T00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "short", day: "numeric" })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Step 3 — Select room for the chosen slot */}
+        {selectedSlot && selectedSlotData && targetDate && (
+          <div className="space-y-2">
+            <Label>Step 3: Select Room ({selectedSlotData.free_rooms.length} available on {selectedSlot.day})</Label>
             <Select value={selectedRoomId} onValueChange={setSelectedRoomId}>
               <SelectTrigger className="w-full md:w-96">
                 <SelectValue placeholder="Select a room..." />
@@ -430,7 +470,7 @@ function RescheduleForm({
 
         <Button
           onClick={handleSubmit}
-          disabled={!entryId || !selectedSlot || !selectedRoomId || scheduling.rescheduleMutation.isPending}
+          disabled={!entryId || !selectedSlot || !targetDate || !selectedRoomId || scheduling.rescheduleMutation.isPending}
           className="gap-2"
         >
           {scheduling.rescheduleMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -619,10 +659,33 @@ function SlotCheckPanel({
 }: {
   scheduling: ReturnType<typeof useScheduling>;
 }) {
+  const user = useAuthStore((s) => s.user);
+  const isFaculty = user?.role === "faculty";
+  const { data: timetables } = useTimetable();
+  const publishedTT = useMemo(
+    () => timetables.filter((t: Timetable) => t.status.toUpperCase() === "PUBLISHED"),
+    [timetables]
+  );
+  const semesters = useMemo(
+    () => [...new Set(publishedTT.map((t: Timetable) => t.semester))].sort((a, b) => a - b),
+    [publishedTT]
+  );
+
   const [date, setDate] = useState("");
+  const [semester, setSemester] = useState<number | undefined>(undefined);
   const [expandedPeriod, setExpandedPeriod] = useState<number | null>(null);
 
-  const { data: result, isLoading } = scheduling.useDateCheck(date || undefined);
+  // Auto-select first semester when available (for faculty)
+  useMemo(() => {
+    if (isFaculty && semesters.length > 0 && semester === undefined) {
+      setSemester(semesters[0]);
+    }
+  }, [isFaculty, semesters, semester]);
+
+  const { data: result, isLoading } = scheduling.useDateCheck(
+    date || undefined,
+    isFaculty ? semester : undefined,
+  );
 
   const togglePeriod = (period: number) => {
     setExpandedPeriod((prev) => (prev === period ? null : period));
@@ -635,11 +698,12 @@ function SlotCheckPanel({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Pick a date to see room and faculty availability for every time slot.
-          This considers both the regular timetable and any approved bookings (reschedules, extra lectures, proxies) on that specific date.
+          {isFaculty
+            ? "Pick a date and semester to see only the free slots for your department — slots where no class is scheduled in the published timetable."
+            : "Pick a date to see room and faculty availability for every time slot. This considers both the regular timetable and any approved bookings (reschedules, extra lectures, proxies) on that specific date."}
         </p>
 
-        <div className="flex items-end gap-4">
+        <div className="flex items-end gap-4 flex-wrap">
           <div className="space-y-2">
             <Label>Select Date</Label>
             <Input
@@ -649,9 +713,28 @@ function SlotCheckPanel({
               className="w-56"
             />
           </div>
+          {isFaculty && semesters.length > 0 && (
+            <div className="space-y-2">
+              <Label>Semester</Label>
+              <Select
+                value={semester?.toString() ?? ""}
+                onValueChange={(v) => { setSemester(Number(v)); setExpandedPeriod(null); }}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Semester" />
+                </SelectTrigger>
+                <SelectContent>
+                  {semesters.map((s) => (
+                    <SelectItem key={s} value={s.toString()}>Semester {s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {result && (
             <Badge variant="outline" className="h-9 text-sm px-4">
               {result.day_of_week}, {result.date}
+              {isFaculty && semester ? ` — Sem ${semester} free slots only` : ""}
             </Badge>
           )}
         </div>
@@ -684,7 +767,7 @@ function SlotCheckPanel({
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => togglePeriod(slot.period)}
                     >
-                      <TableCell className="font-medium">P{slot.period} — {slot.slot_label}</TableCell>
+                      <TableCell className="font-medium">{slot.slot_label}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{slot.start_time} – {slot.end_time}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
