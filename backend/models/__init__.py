@@ -11,6 +11,7 @@ from models.notification import NotificationLog, NotificationChannel, Notificati
 from models.exam import ExamTimetable, ExamEntry, InvigilatorAssignment, StudentExamEnrolment
 from models.audit import AuditLog
 from models.timeslot import TimeSlotConfig, SlotType
+from models.batch import Batch
 
 __all__ = [
     "College", "Department",
@@ -25,4 +26,5 @@ __all__ = [
     "ExamTimetable", "ExamEntry", "InvigilatorAssignment", "StudentExamEnrolment",
     "AuditLog",
     "TimeSlotConfig", "SlotType",
+    "Batch",
 ]

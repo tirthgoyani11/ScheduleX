@@ -24,6 +24,8 @@ async def create_subject(
         semester=request.semester,
         credits=request.credits,
         weekly_periods=request.weekly_periods,
+        lecture_hours=request.lecture_hours,
+        lab_hours=request.lab_hours,
         needs_lab=request.needs_lab,
         batch_size=request.batch_size,
         batch=request.batch,
