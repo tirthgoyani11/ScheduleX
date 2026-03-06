@@ -81,13 +81,21 @@ export default function GeneratePage() {
       }
     }
 
-    const result = await generate({
-      semester: store.selectedSemester,
-      academic_year: academicYear,
-      faculty_subject_map: fsMap,
-      time_limit_seconds: 120,
-    });
-    navigate(`/timetable/view/${result.timetable_id}`);
+    try {
+      const result = await generate({
+        semester: store.selectedSemester,
+        academic_year: academicYear,
+        faculty_subject_map: fsMap,
+        time_limit_seconds: 120,
+      });
+      if (result.status === "INFEASIBLE") {
+        setGeneratingText("Infeasible — try adjusting faculty assignments or adding more rooms.");
+        return;
+      }
+      navigate(`/timetable/view/${result.timetable_id}`);
+    } catch {
+      setGeneratingText("Generation failed. Please try again.");
+    }
   };
 
   const steps = [
