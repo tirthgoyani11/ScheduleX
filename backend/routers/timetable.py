@@ -258,6 +258,7 @@ async def generate_timetable(
                 timetable_id=timetable.timetable_id,
                 faculty_subject_map=request.faculty_subject_map,
                 time_limit_seconds=request.time_limit_seconds or 120,
+                working_days=request.working_days,
             )
             return JobResponse(
                 job_id=job_id,
@@ -275,6 +276,7 @@ async def generate_timetable(
         config={
             "faculty_subject_map": request.faculty_subject_map,
             "time_limit_seconds": request.time_limit_seconds or 120,
+            "working_days": request.working_days,
         },
     )
 

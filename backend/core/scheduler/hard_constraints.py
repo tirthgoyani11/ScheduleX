@@ -13,6 +13,7 @@ Theory-specific:
   HC7t:  Each subject-faculty gets exactly lecture_hours theory slots
   HC8t:  At most 1 theory class at any (day, lecture_period) — whole division attends
   HC10:  3-credit subjects with ≥2 lecture_hours must span ≥2 days
+  HC11:  At most 1 theory class per subject per day
 
 Lab-specific:
   HC7l:    Each (subject, batch) gets exactly lab_hours lab slots (any faculty)
@@ -292,6 +293,21 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
                         day_indicators[day] = model.NewConstant(0)
                 if day_indicators:
                     model.Add(sum(day_indicators.values()) >= 2)
+                    constraint_count += 1
+
+    # ── HC11: At most 1 theory class per subject per day ──────────────────────
+    # Prevents the same subject from being scheduled multiple times on one day.
+    for subject in data["subjects"]:
+        lh = subject.lecture_hours if subject.lecture_hours is not None else subject.weekly_periods
+        if lh <= 0:
+            continue
+        for fid in faculty_subject_map.get(subject.subject_id, []):
+            for day in days:
+                day_slots = by_theory_subject_faculty_day.get(
+                    (subject.subject_id, fid, day), []
+                )
+                if len(day_slots) > 1:
+                    model.Add(sum(day_slots) <= 1)
                     constraint_count += 1
 
     log.info("hard_constraints_applied", constraints_added=constraint_count)

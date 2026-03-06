@@ -263,7 +263,7 @@ async def _load_scheduling_data(
         "existing_bookings": existing_bookings,
         "general_blocks": general_blocks,
         "faculty_subject_map": faculty_subject_map,
-        "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+        "days": config.get("working_days", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]),
         "periods": periods,
         "all_slots": all_slots,
         "slot_lookup": slot_lookup,

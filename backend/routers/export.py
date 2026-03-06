@@ -134,8 +134,7 @@ async def _load_timetable_data(timetable_id: str, user: User, db: AsyncSession):
 
 
 def _get_days(entries):
-    used = {e["day"] for e in entries}
-    return [d for d in ALL_DAYS if d in used]
+    return list(ALL_DAYS)
 
 
 def _get_batch_names(entries):

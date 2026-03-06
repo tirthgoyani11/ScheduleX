@@ -33,6 +33,7 @@ export function useTimetable(timetableId?: string) {
       semester: number;
       academic_year: string;
       faculty_subject_map: Record<string, string[]>;
+      working_days?: string[];
       time_limit_seconds?: number;
     }) => api.post<JobResponse>("/timetable/generate", body),
     onSuccess: (data) => {

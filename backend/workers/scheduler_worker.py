@@ -25,6 +25,7 @@ def enqueue_timetable_generation(
     timetable_id: str,
     faculty_subject_map: dict,
     time_limit_seconds: int = 120,
+    working_days: list[str] | None = None,
 ) -> str:
     """Enqueue a timetable generation job. Returns RQ job ID or timetable_id as fallback."""
     if not RQ_AVAILABLE or timetable_queue is None:
@@ -37,6 +38,7 @@ def enqueue_timetable_generation(
             "timetable_id": timetable_id,
             "faculty_subject_map": faculty_subject_map,
             "time_limit_seconds": time_limit_seconds,
+            "working_days": working_days or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
         },
         job_timeout=300,       # Max 5 min for very large problems
         result_ttl=3600,       # Keep result 1 hour
@@ -49,6 +51,7 @@ def _run_generation(
     timetable_id: str,
     faculty_subject_map: dict,
     time_limit_seconds: int,
+    working_days: list[str] | None = None,
 ):
     """Synchronous wrapper — RQ runs this. Async code via asyncio.run()."""
     async def _async():
@@ -62,6 +65,7 @@ def _run_generation(
                 config={
                     "faculty_subject_map": faculty_subject_map,
                     "time_limit_seconds": time_limit_seconds,
+                    "working_days": working_days or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
                 },
             )
             # Update timetable with result

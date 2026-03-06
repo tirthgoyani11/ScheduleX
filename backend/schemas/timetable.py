@@ -2,12 +2,18 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 
+VALID_DAYS = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+
 
 class TimetableCreateRequest(BaseModel):
     semester: int = Field(..., ge=1, le=8, description="Semester number 1–8")
     academic_year: str = Field(..., pattern=r"^\d{4}-\d{2}$", description="e.g. 2025-26")
     faculty_subject_map: dict[str, list[str]] = Field(
         ..., description="Map of faculty_id → list of subject_ids assigned to them"
+    )
+    working_days: list[str] = Field(
+        default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        description="Days to schedule classes on",
     )
     time_limit_seconds: Optional[int] = Field(120, ge=30, le=600)
 

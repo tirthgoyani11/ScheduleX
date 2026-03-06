@@ -90,6 +90,7 @@ export default function GeneratePage() {
         semester: store.selectedSemester,
         academic_year: academicYear,
         faculty_subject_map: fsMap,
+        working_days: store.workingDays,
         time_limit_seconds: 120,
       });
       if (result.status === "INFEASIBLE") {
