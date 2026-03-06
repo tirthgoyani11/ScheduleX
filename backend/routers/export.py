@@ -278,6 +278,15 @@ async def export_department_pdf(
 
     semester_label = "EVEN" if tt.semester % 2 == 0 else "ODD"
 
+    # ── Compute fixed row height for single-page layout ──
+    # A4 landscape content: 200mm height
+    # Reserve: header(11) + info(5) + thead(5) + subjects(15) + faculty(8) + footer(7) + brand(3) = 54mm
+    # Break rows are fixed at 4mm each, subtract those from available space
+    num_breaks = sum(1 for s in slots if s.slot_type.value == "break")
+    num_data_rows = len(slots) - num_breaks
+    available = 200 - 54 - (num_breaks * 4)
+    row_height = min(13, max(6, round(available / max(num_data_rows, 1), 1)))
+
     template = _jinja_env.get_template("department.html")
     html_str = template.render(
         college_name=college_name,
@@ -297,6 +306,7 @@ async def export_department_pdf(
         total_day_cols=total_day_cols,
         subject_details=subject_details,
         faculty_legend=faculty_legend,
+        row_height=row_height,
     )
 
     pdf_bytes = _render_pdf(html_str)
