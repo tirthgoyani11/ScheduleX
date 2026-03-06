@@ -21,6 +21,7 @@ PENALTY_WEIGHTS = {
     "student_gap":          80,
     "faculty_preference":   50,
     "room_utilization":     40,
+    "day_balance":          35,
     "lab_anchoring":        35,
     "avoid_early_morning":  30,
     "isolated_day":         25,
@@ -172,6 +173,26 @@ def apply_soft_constraints(
             excess = room.capacity - sub.batch_size
             if excess > 10:
                 penalties.append(var * PENALTY_WEIGHTS["room_utilization"])
+
+    # ── SC6: Day balance — discourage empty & overloaded days (weight: 35) ───
+    # Penalize if a day has no theory at all (empty) or too many (> max_per_day)
+    total_lecture_hours = sum(
+        (s.lecture_hours or s.weekly_periods)
+        for s in data["subjects"]
+        if (s.lecture_hours or s.weekly_periods) > 0
+    )
+    max_per_day = max(3, -(-total_lecture_hours // len(days)) + 1)  # ceil + 1
+    for day in days:
+        day_theory_vars = []
+        for period in periods:
+            for _, v in by_theory_slot.get((day, period), []):
+                day_theory_vars.append(v)
+        if day_theory_vars:
+            # Penalize overloaded days (more than max_per_day theory lectures)
+            excess = model.NewIntVar(0, len(day_theory_vars), f"dex_{day[:3]}")
+            model.Add(excess >= sum(day_theory_vars) - max_per_day)
+            model.Add(excess >= 0)
+            penalties.append(excess * PENALTY_WEIGHTS["day_balance"])
 
     log.info("soft_constraints_applied", penalty_terms=len(penalties))
     return penalties

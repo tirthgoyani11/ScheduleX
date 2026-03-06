@@ -24,7 +24,9 @@ log = structlog.get_logger()
 def _infer_lab_category(room_name: str) -> str:
     """Infer lab category from room name for subject-lab matching."""
     n = room_name.lower()
-    if any(k in n for k in ["computer lab", "networking lab", "ai/ml lab"]):
+    if "networking lab" in n:
+        return "networking"
+    if any(k in n for k in ["computer lab", "ai/ml lab"]):
         return "computer"
     if "electronics lab" in n:
         return "electronics"
@@ -92,6 +94,10 @@ def _infer_subject_lab_needs(subject_name: str) -> set[str]:
     # Robotics
     if "robotics" in n:
         return {"robotics", "computer"}
+
+    # Networking subjects
+    if any(k in n for k in ["computer network", "networking"]):
+        return {"computer", "networking"}
 
     # IoT
     if "iot" in n or "internet of things" in n:

@@ -1,0 +1,472 @@
+[
+  {
+    "entry_id": "74e53345-ffab-4d20-9e1b-3c343b31d870",
+    "day": "Tuesday",
+    "period": 5,
+    "subject_name": "Physics",
+    "faculty_name": "Dr. Nilesh Patel",
+    "room_name": "CH-06",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "b25e1788-bd8f-47a0-af9e-c2067944d2bf",
+    "day": "Wednesday",
+    "period": 5,
+    "subject_name": "Physics",
+    "faculty_name": "Dr. Nilesh Patel",
+    "room_name": "CH-06",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "445adfda-be25-4165-9fb8-dc65645db830",
+    "day": "Thursday",
+    "period": 5,
+    "subject_name": "Physics",
+    "faculty_name": "Dr. Nilesh Patel",
+    "room_name": "CH-06",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "d924265c-ab42-4270-b861-a604c42249fe",
+    "day": "Friday",
+    "period": 3,
+    "subject_name": "Basic Electrical Engineering",
+    "faculty_name": "Dr. Rajesh Patel",
+    "room_name": "CH-06",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "bb6aae40-dbc1-4a58-85bd-8cf77419ec61",
+    "day": "Friday",
+    "period": 5,
+    "subject_name": "Basic Electrical Engineering",
+    "faculty_name": "Dr. Rajesh Patel",
+    "room_name": "CH-06",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "48c968f0-389d-4e5f-a2ae-b7f322342ae6",
+    "day": "Saturday",
+    "period": 5,
+    "subject_name": "Basic Electrical Engineering",
+    "faculty_name": "Dr. Rajesh Patel",
+    "room_name": "CH-06",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "18a2b1dc-a00c-4de9-b63e-2a3c202583c4",
+    "day": "Tuesday",
+    "period": 3,
+    "subject_name": "Workshop Practice",
+    "faculty_name": "Prof. Meena Shah",
+    "room_name": "CH-07",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "5566b9de-358e-40d4-a781-51cabaa98b06",
+    "day": "Wednesday",
+    "period": 3,
+    "subject_name": "Workshop Practice",
+    "faculty_name": "Prof. Meena Shah",
+    "room_name": "CH-07",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "daa873a7-8afb-44d0-8fd1-5ae787a902a1",
+    "day": "Monday",
+    "period": 9,
+    "subject_name": "Engineering Graphics",
+    "faculty_name": "Dr. Amit Desai",
+    "room_name": "CP-03",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "7d54ee50-56f8-4995-8471-9369d3089f7f",
+    "day": "Monday",
+    "period": 11,
+    "subject_name": "Mathematics-I",
+    "faculty_name": "Prof. Priya Joshi",
+    "room_name": "CH-06",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "7546309c-4377-4b3f-bbd1-3c3d79a7ec62",
+    "day": "Tuesday",
+    "period": 11,
+    "subject_name": "Mathematics-I",
+    "faculty_name": "Prof. Priya Joshi",
+    "room_name": "CH-06",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "56f9e2a0-e52f-4569-98e0-3bb6c81b0ac0",
+    "day": "Thursday",
+    "period": 3,
+    "subject_name": "Mathematics-I",
+    "faculty_name": "Prof. Priya Joshi",
+    "room_name": "CH-06",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "9ea0cc79-4e7f-41de-9002-c5576cfcf616",
+    "day": "Wednesday",
+    "period": 7,
+    "subject_name": "English Communication",
+    "faculty_name": "Dr. Hiren Gandhi",
+    "room_name": "CH-06",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "c30f3616-f43b-478a-9d32-0e01193eeb9e",
+    "day": "Monday",
+    "period": 13,
+    "subject_name": "English Communication",
+    "faculty_name": "Dr. Hiren Gandhi",
+    "room_name": "CH-07",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "1b4b7896-16c9-41d1-b57e-1cc8e3ac9738",
+    "day": "Monday",
+    "period": 7,
+    "subject_name": "Chemistry",
+    "faculty_name": "Prof. Nidhi Thaker",
+    "room_name": "CH-07",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "99a6fe53-dc5a-4242-ac4b-64e0ce5dbd7f",
+    "day": "Wednesday",
+    "period": 9,
+    "subject_name": "Chemistry",
+    "faculty_name": "Prof. Nidhi Thaker",
+    "room_name": "CH-07",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "7728a2a9-543c-4425-b264-a8f28744bb1e",
+    "day": "Wednesday",
+    "period": 11,
+    "subject_name": "Chemistry",
+    "faculty_name": "Prof. Nidhi Thaker",
+    "room_name": "CH-07",
+    "entry_type": "regular",
+    "batch": null
+  },
+  {
+    "entry_id": "1f105fa2-1d46-4a04-a6d1-268b4f975c8e",
+    "day": "Saturday",
+    "period": 11,
+    "subject_name": "Physics",
+    "faculty_name": "Dr. Nilesh Patel",
+    "room_name": "Physics Lab 1",
+    "entry_type": "regular",
+    "batch": "A"
+  },
+  {
+    "entry_id": "647f1507-048b-43e5-b321-1570abc92c63",
+    "day": "Saturday",
+    "period": 13,
+    "subject_name": "Physics",
+    "faculty_name": "Dr. Nilesh Patel",
+    "room_name": "Physics Lab 1",
+    "entry_type": "regular",
+    "batch": "A"
+  },
+  {
+    "entry_id": "f6b714bd-eb75-4161-b06e-1cc66a5fcd52",
+    "day": "Monday",
+    "period": 3,
+    "subject_name": "Physics",
+    "faculty_name": "Dr. Nilesh Patel",
+    "room_name": "Physics Lab 1",
+    "entry_type": "regular",
+    "batch": "B"
+  },
+  {
+    "entry_id": "f5bc8819-e2a4-44f8-9e03-fc2986589df0",
+    "day": "Monday",
+    "period": 5,
+    "subject_name": "Physics",
+    "faculty_name": "Dr. Nilesh Patel",
+    "room_name": "Physics Lab 1",
+    "entry_type": "regular",
+    "batch": "B"
+  },
+  {
+    "entry_id": "45b7b7fe-e0e0-461b-bd0a-062b215432e5",
+    "day": "Thursday",
+    "period": 1,
+    "subject_name": "Physics",
+    "faculty_name": "Dr. Nilesh Patel",
+    "room_name": "Physics Lab 2",
+    "entry_type": "regular",
+    "batch": "C"
+  },
+  {
+    "entry_id": "bd32c63b-dc30-41ec-819b-4ac6cbe97e3b",
+    "day": "Thursday",
+    "period": 3,
+    "subject_name": "Physics",
+    "faculty_name": "Dr. Nilesh Patel",
+    "room_name": "Physics Lab 2",
+    "entry_type": "regular",
+    "batch": "C"
+  },
+  {
+    "entry_id": "8fbe1d86-d5bf-4bb4-9a84-af9b7e49e4ee",
+    "day": "Monday",
+    "period": 3,
+    "subject_name": "Basic Electrical Engineering",
+    "faculty_name": "Dr. Rajesh Patel",
+    "room_name": "Electrical Measurements Lab",
+    "entry_type": "regular",
+    "batch": "A"
+  },
+  {
+    "entry_id": "6aa32614-45ba-4dd2-bddf-b15f5392f7f3",
+    "day": "Monday",
+    "period": 5,
+    "subject_name": "Basic Electrical Engineering",
+    "faculty_name": "Dr. Rajesh Patel",
+    "room_name": "Electrical Measurements Lab",
+    "entry_type": "regular",
+    "batch": "A"
+  },
+  {
+    "entry_id": "7c8cc104-e628-4f1f-a9a1-c72759a90508",
+    "day": "Thursday",
+    "period": 1,
+    "subject_name": "Basic Electrical Engineering",
+    "faculty_name": "Dr. Rajesh Patel",
+    "room_name": "Electrical Machines Lab",
+    "entry_type": "regular",
+    "batch": "B"
+  },
+  {
+    "entry_id": "4174c92e-aef2-49b7-8987-ea9107ff6bab",
+    "day": "Thursday",
+    "period": 3,
+    "subject_name": "Basic Electrical Engineering",
+    "faculty_name": "Dr. Rajesh Patel",
+    "room_name": "Electrical Machines Lab",
+    "entry_type": "regular",
+    "batch": "B"
+  },
+  {
+    "entry_id": "a7267fe9-8a19-431e-8570-617a656e0c0c",
+    "day": "Friday",
+    "period": 9,
+    "subject_name": "Basic Electrical Engineering",
+    "faculty_name": "Dr. Rajesh Patel",
+    "room_name": "Electrical Machines Lab",
+    "entry_type": "regular",
+    "batch": "C"
+  },
+  {
+    "entry_id": "35e8b338-9830-4dd3-8ef7-0b558edbdc6b",
+    "day": "Friday",
+    "period": 11,
+    "subject_name": "Basic Electrical Engineering",
+    "faculty_name": "Dr. Rajesh Patel",
+    "room_name": "Electrical Machines Lab",
+    "entry_type": "regular",
+    "batch": "C"
+  },
+  {
+    "entry_id": "c83d7eb1-42bc-468c-af2c-06e5c0cc6c46",
+    "day": "Thursday",
+    "period": 1,
+    "subject_name": "Workshop Practice",
+    "faculty_name": "Prof. Meena Shah",
+    "room_name": "Mechanical Workshop 1 (Fitting)",
+    "entry_type": "regular",
+    "batch": "A"
+  },
+  {
+    "entry_id": "19cee041-949d-4961-b782-12aa082775d8",
+    "day": "Thursday",
+    "period": 3,
+    "subject_name": "Workshop Practice",
+    "faculty_name": "Prof. Meena Shah",
+    "room_name": "Mechanical Workshop 1 (Fitting)",
+    "entry_type": "regular",
+    "batch": "A"
+  },
+  {
+    "entry_id": "91c7f88f-3207-4f5c-8f7e-8655ac1d65e2",
+    "day": "Monday",
+    "period": 11,
+    "subject_name": "Workshop Practice",
+    "faculty_name": "Prof. Meena Shah",
+    "room_name": "Mechanical Workshop 3 (Machine Shop)",
+    "entry_type": "regular",
+    "batch": "B"
+  },
+  {
+    "entry_id": "b16b3903-5f3a-4405-a790-f50daff50a59",
+    "day": "Monday",
+    "period": 13,
+    "subject_name": "Workshop Practice",
+    "faculty_name": "Prof. Meena Shah",
+    "room_name": "Mechanical Workshop 3 (Machine Shop)",
+    "entry_type": "regular",
+    "batch": "B"
+  },
+  {
+    "entry_id": "59eaf371-b1b6-496d-a903-155407277678",
+    "day": "Monday",
+    "period": 3,
+    "subject_name": "Workshop Practice",
+    "faculty_name": "Prof. Meena Shah",
+    "room_name": "Mechanical Workshop 1 (Fitting)",
+    "entry_type": "regular",
+    "batch": "C"
+  },
+  {
+    "entry_id": "75696f91-e190-46b6-888c-bb8a4d494159",
+    "day": "Monday",
+    "period": 5,
+    "subject_name": "Workshop Practice",
+    "faculty_name": "Prof. Meena Shah",
+    "room_name": "Mechanical Workshop 1 (Fitting)",
+    "entry_type": "regular",
+    "batch": "C"
+  },
+  {
+    "entry_id": "4968d849-bfc1-45a1-801f-64a7832f80b7",
+    "day": "Monday",
+    "period": 11,
+    "subject_name": "Engineering Graphics",
+    "faculty_name": "Dr. Amit Desai",
+    "room_name": "Computer Lab 1",
+    "entry_type": "regular",
+    "batch": "A"
+  },
+  {
+    "entry_id": "27215d31-2df3-41d8-ab96-9e59620c8f9e",
+    "day": "Monday",
+    "period": 13,
+    "subject_name": "Engineering Graphics",
+    "faculty_name": "Dr. Amit Desai",
+    "room_name": "Computer Lab 1",
+    "entry_type": "regular",
+    "batch": "A"
+  },
+  {
+    "entry_id": "feb58a3a-0879-40f9-8c9b-eeba08d99ffb",
+    "day": "Friday",
+    "period": 9,
+    "subject_name": "Engineering Graphics",
+    "faculty_name": "Dr. Amit Desai",
+    "room_name": "Computer Lab 1",
+    "entry_type": "regular",
+    "batch": "B"
+  },
+  {
+    "entry_id": "fcfa2964-2e61-4925-8184-8a521cde776a",
+    "day": "Friday",
+    "period": 11,
+    "subject_name": "Engineering Graphics",
+    "faculty_name": "Dr. Amit Desai",
+    "room_name": "Computer Lab 1",
+    "entry_type": "regular",
+    "batch": "B"
+  },
+  {
+    "entry_id": "4d189f7b-b902-4997-99ae-9d4674d37cde",
+    "day": "Saturday",
+    "period": 11,
+    "subject_name": "Engineering Graphics",
+    "faculty_name": "Dr. Amit Desai",
+    "room_name": "Networking Lab 1",
+    "entry_type": "regular",
+    "batch": "C"
+  },
+  {
+    "entry_id": "761d45b3-5a14-4d66-963d-a7c8d1f3c422",
+    "day": "Saturday",
+    "period": 13,
+    "subject_name": "Engineering Graphics",
+    "faculty_name": "Dr. Amit Desai",
+    "room_name": "Networking Lab 1",
+    "entry_type": "regular",
+    "batch": "C"
+  },
+  {
+    "entry_id": "d88cb496-d790-4dc8-98e0-8004bd4a3b3c",
+    "day": "Friday",
+    "period": 9,
+    "subject_name": "Chemistry",
+    "faculty_name": "Prof. Nidhi Thaker",
+    "room_name": "Chemistry Lab 2",
+    "entry_type": "regular",
+    "batch": "A"
+  },
+  {
+    "entry_id": "52848ce5-9bc0-4cc9-9f8f-1cf5d9f25db7",
+    "day": "Friday",
+    "period": 11,
+    "subject_name": "Chemistry",
+    "faculty_name": "Prof. Nidhi Thaker",
+    "room_name": "Chemistry Lab 2",
+    "entry_type": "regular",
+    "batch": "A"
+  },
+  {
+    "entry_id": "d47ea0cc-da4d-446c-b7dd-e11eb0a830a5",
+    "day": "Saturday",
+    "period": 11,
+    "subject_name": "Chemistry",
+    "faculty_name": "Prof. Nidhi Thaker",
+    "room_name": "Chemistry Lab 2",
+    "entry_type": "regular",
+    "batch": "B"
+  },
+  {
+    "entry_id": "c5f639db-5720-4db4-a5b0-8d57a3500f2e",
+    "day": "Saturday",
+    "period": 13,
+    "subject_name": "Chemistry",
+    "faculty_name": "Prof. Nidhi Thaker",
+    "room_name": "Chemistry Lab 2",
+    "entry_type": "regular",
+    "batch": "B"
+  },
+  {
+    "entry_id": "1f8b76dc-f82a-4a0b-a11a-9efc4588b7b5",
+    "day": "Monday",
+    "period": 11,
+    "subject_name": "Chemistry",
+    "faculty_name": "Prof. Nidhi Thaker",
+    "room_name": "Chemistry Lab 2",
+    "entry_type": "regular",
+    "batch": "C"
+  },
+  {
+    "entry_id": "616a8247-e968-409c-a49f-e56a087f6748",
+    "day": "Monday",
+    "period": 13,
+    "subject_name": "Chemistry",
+    "faculty_name": "Prof. Nidhi Thaker",
+    "room_name": "Chemistry Lab 2",
+    "entry_type": "regular",
+    "batch": "C"
+  }
+]

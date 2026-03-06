@@ -7,6 +7,7 @@ Combined (theory + lab):
   HC2:  No room double-booking at any (day, period)
   HC4:  Faculty weekly load cap
   HC9:  No more than 3 consecutive periods for same faculty
+  HC_theory_lab: Theory and labs cannot share the same (day, period)
 
 Theory-specific:
   HC7t:  Each subject-faculty gets exactly lecture_hours theory slots
@@ -226,6 +227,22 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
                 if start_vars:
                     model.AddExactlyOne(start_vars)
                     constraint_count += 1
+
+    # ── HC_theory_lab: Theory & labs cannot share the same (day, period) ──────
+    # Theory is attended by ALL students; if a lab is running for ANY batch,
+    # no theory can happen at that slot (students can't be in two places).
+    by_lab_slot = variables.get("by_lab_slot", {})
+    for day in days:
+        for period in periods:
+            theory_at_slot = by_theory_slot.get((day, period), [])
+            lab_at_slot = by_lab_slot.get((day, period), [])
+            if theory_at_slot and lab_at_slot:
+                has_theory = model.NewBoolVar(f"ht_{day[:3]}_{period}")
+                model.AddMaxEquality(
+                    has_theory, [v for _, v in theory_at_slot]
+                )
+                model.Add(sum(lab_at_slot) == 0).OnlyEnforceIf(has_theory)
+                constraint_count += 1
 
     # ── HC9: No more than 3 consecutive periods (theory + lab) ────────────────
     sorted_periods = sorted(periods)
