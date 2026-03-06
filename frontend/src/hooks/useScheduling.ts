@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import type { FreeSlot, FreeSlotWithRooms, FreeRoom, FreeFaculty, SlotBooking } from "@/types";
+import type { FreeSlot, FreeSlotWithRooms, FreeRoom, FreeFaculty, SlotBooking, DateCheckResult } from "@/types";
 import { toast } from "sonner";
 
 export function useScheduling(timetableId?: string) {
@@ -30,12 +30,24 @@ export function useScheduling(timetableId?: string) {
   }
 
   // ── Reschedule Options (free slots + rooms for an entry) ──
-  function useRescheduleOptions(entryId: string | undefined) {
+  function useRescheduleOptions(entryId: string | undefined, targetDate?: string) {
     return useQuery<FreeSlotWithRooms[]>({
-      queryKey: ["reschedule-options", timetableId, entryId],
-      queryFn: () =>
-        api.get(`/scheduling/reschedule-options/${timetableId}`, { entry_id: entryId! }),
+      queryKey: ["reschedule-options", timetableId, entryId, targetDate],
+      queryFn: () => {
+        const params: Record<string, string> = { entry_id: entryId! };
+        if (targetDate) params.target_date = targetDate;
+        return api.get(`/scheduling/reschedule-options/${timetableId}`, params);
+      },
       enabled: !!timetableId && !!entryId,
+    });
+  }
+
+  // ── Date-specific availability check ──
+  function useDateCheck(date: string | undefined) {
+    return useQuery<DateCheckResult>({
+      queryKey: ["date-check", date],
+      queryFn: () => api.get("/scheduling/date-check", { date: date! }),
+      enabled: !!date,
     });
   }
 
@@ -184,6 +196,7 @@ export function useScheduling(timetableId?: string) {
     useRescheduleOptions,
     useFreeFaculty,
     useBookings,
+    useDateCheck,
     rescheduleMutation,
     extraLectureMutation,
     extraLectureAssignMutation,

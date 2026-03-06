@@ -234,6 +234,29 @@ export interface SlotBooking {
   created_at: string;
 }
 
+export interface BusyFaculty {
+  faculty_id: string;
+  name: string;
+  reason: string;
+}
+
+export interface DateSlotCheck {
+  period: number;
+  slot_label: string;
+  start_time: string;
+  end_time: string;
+  free_rooms: FreeRoom[];
+  busy_rooms: FreeRoom[];
+  free_faculty: FreeFaculty[];
+  busy_faculty: BusyFaculty[];
+}
+
+export interface DateCheckResult {
+  date: string;
+  day_of_week: string;
+  slots: DateSlotCheck[];
+}
+
 // Legacy helper — period number from slot_order, display times
 export const DEFAULT_TIME_SLOTS: TimeSlot[] = [
   { slot_id: "", college_id: "", slot_order: 1, label: "Period 1", start_time: "09:00", end_time: "10:00", slot_type: "lecture" },

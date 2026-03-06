@@ -20,12 +20,15 @@ from schemas.scheduling import (
     FreeSlotWithRoomsResponse,
     FreeRoomResponse,
     FreeFacultyResponse,
+    BusyFacultyResponse,
+    DateSlotCheckResponse,
+    DateCheckResponse,
     RescheduleRequest,
     ExtraLectureRequest,
     ProxyRequest,
     SlotBookingResponse,
 )
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date as date_type
 import uuid
 
 router = APIRouter(prefix="/scheduling", tags=["Scheduling"])
@@ -71,19 +74,46 @@ async def _get_booked_room_slots(college_id: str, db: AsyncSession):
     return {(r.day, r.period, r.room_id) for r in result.all()}
 
 
-async def _get_approved_booking_slots(college_id: str, db: AsyncSession):
-    """Return set of (day, period, faculty_id) and (day, period, room_id) from approved slot_bookings."""
-    result = await db.execute(
-        select(SlotBooking.day, SlotBooking.period, SlotBooking.faculty_id, SlotBooking.room_id)
-        .where(
-            SlotBooking.college_id == college_id,
-            SlotBooking.status == BookingStatus.APPROVED,
-        )
+async def _get_approved_booking_slots(college_id: str, db: AsyncSession, target_date: str | None = None):
+    """Return set of (day, period, faculty_id) and (day, period, room_id) from approved slot_bookings.
+    If target_date is given, only include bookings for that specific date."""
+    query = select(
+        SlotBooking.day, SlotBooking.period, SlotBooking.faculty_id,
+        SlotBooking.room_id, SlotBooking.booking_type,
+    ).where(
+        SlotBooking.college_id == college_id,
+        SlotBooking.status == BookingStatus.APPROVED,
     )
+    if target_date:
+        query = query.where(SlotBooking.target_date == target_date)
+    result = await db.execute(query)
     rows = result.all()
     fac_set = {(r.day, r.period, r.faculty_id) for r in rows}
     room_set = {(r.day, r.period, r.room_id) for r in rows}
     return fac_set, room_set
+
+
+async def _get_date_booking_details(college_id: str, target_date: str, db: AsyncSession):
+    """Return detailed booking info for a specific date (faculty_id → booking_type mapping)."""
+    result = await db.execute(
+        select(
+            SlotBooking.day, SlotBooking.period,
+            SlotBooking.faculty_id, SlotBooking.room_id,
+            SlotBooking.booking_type,
+        ).where(
+            SlotBooking.college_id == college_id,
+            SlotBooking.status == BookingStatus.APPROVED,
+            SlotBooking.target_date == target_date,
+        )
+    )
+    rows = result.all()
+    # faculty: {(day, period, faculty_id): booking_type}
+    fac_map: dict[tuple, str] = {}
+    room_set: set[tuple] = set()
+    for r in rows:
+        fac_map[(r.day, r.period, r.faculty_id)] = r.booking_type.value if hasattr(r.booking_type, 'value') else r.booking_type
+        room_set.add((r.day, r.period, r.room_id))
+    return fac_map, room_set
 
 
 async def _get_student_busy_slots(timetable_id: str, db: AsyncSession):
@@ -168,12 +198,14 @@ async def get_free_slots_for_faculty(
 async def get_reschedule_options(
     timetable_id: str,
     entry_id: str,
+    target_date: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Given a timetable entry to reschedule, return all slots where BOTH the faculty
     AND students are free, with available rooms at each slot.
+    If target_date is provided, also checks date-specific approved bookings.
     """
     entry = await db.get(TimetableEntry, entry_id)
     if not entry:
@@ -188,6 +220,19 @@ async def get_reschedule_options(
     extra_fac, extra_rooms = await _get_approved_booking_slots(college_id, db)
     student_busy = await _get_student_busy_slots(timetable_id, db)
 
+    # Date-specific bookings
+    date_fac_set: set = set()
+    date_room_set: set = set()
+    filter_day: str | None = None
+    if target_date:
+        _, date_room_set = await _get_date_booking_details(college_id, target_date, db)
+        date_fac_map, _ = await _get_date_booking_details(college_id, target_date, db)
+        date_fac_set = set(date_fac_map.keys())
+        try:
+            filter_day = date_type.fromisoformat(target_date).strftime("%A")
+        except ValueError:
+            pass
+
     # Get all rooms
     room_result = await db.execute(
         select(Room).where(Room.college_id == college_id)
@@ -195,7 +240,8 @@ async def get_reschedule_options(
     all_rooms = room_result.scalars().all()
 
     results: list[FreeSlotWithRoomsResponse] = []
-    for d in ALL_DAYS:
+    days = [filter_day] if filter_day else ALL_DAYS
+    for d in days:
         for s in slots:
             if s.slot_type.value == "break":
                 continue
@@ -204,7 +250,7 @@ async def get_reschedule_options(
             student_key = (d, period)
 
             # Skip if faculty busy or students busy
-            if fac_key in booked_fac or fac_key in extra_fac:
+            if fac_key in booked_fac or fac_key in extra_fac or fac_key in date_fac_set:
                 continue
             if student_key in student_busy:
                 continue
@@ -213,7 +259,7 @@ async def get_reschedule_options(
             free_rooms = []
             for r in all_rooms:
                 room_key = (d, period, r.room_id)
-                if room_key not in booked_rooms and room_key not in extra_rooms:
+                if room_key not in booked_rooms and room_key not in extra_rooms and room_key not in date_room_set:
                     free_rooms.append(FreeRoomResponse(
                         room_id=r.room_id, room_name=r.name,
                         room_type=r.room_type.value, capacity=r.capacity,
@@ -227,6 +273,109 @@ async def get_reschedule_options(
                 ))
 
     return results
+
+
+@router.get("/date-check", response_model=DateCheckResponse)
+async def check_date_availability(
+    date: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Check room and faculty availability for every time slot on a specific date.
+    Considers both the regular timetable (GlobalBooking) AND approved SlotBookings
+    that target this specific date.
+
+    `date` format: YYYY-MM-DD (e.g. "2026-03-10")
+    """
+    try:
+        target = date_type.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(400, "Invalid date format. Use YYYY-MM-DD")
+
+    day_name = target.strftime("%A")  # e.g. "Monday"
+    if day_name == "Sunday":
+        raise HTTPException(400, "Sunday is not a working day")
+
+    college_id = current_user.college_id
+    dept_id = current_user.dept_id
+
+    slots = await _get_time_slots(college_id, db)
+    booked_fac = await _get_booked_faculty_slots(college_id, db)
+    booked_rooms = await _get_booked_room_slots(college_id, db)
+    date_fac_map, date_room_set = await _get_date_booking_details(college_id, date, db)
+
+    # All rooms
+    room_result = await db.execute(select(Room).where(Room.college_id == college_id))
+    all_rooms = room_result.scalars().all()
+
+    # All faculty in this department
+    fac_query = select(Faculty)
+    if dept_id:
+        fac_query = fac_query.where(Faculty.dept_id == dept_id)
+    fac_result = await db.execute(fac_query)
+    all_faculty = fac_result.scalars().all()
+
+    # Faculty load map
+    load_result = await db.execute(
+        select(GlobalBooking.faculty_id, sqlfunc.count(GlobalBooking.booking_id))
+        .where(GlobalBooking.college_id == college_id)
+        .group_by(GlobalBooking.faculty_id)
+    )
+    load_map = {r[0]: r[1] for r in load_result.all()}
+
+    slot_results: list[DateSlotCheckResponse] = []
+    for s in slots:
+        if s.slot_type.value == "break":
+            continue
+        period = s.slot_order
+
+        free_rooms_list = []
+        busy_rooms_list = []
+        for r in all_rooms:
+            room_key = (day_name, period, r.room_id)
+            room_info = FreeRoomResponse(
+                room_id=r.room_id, room_name=r.name,
+                room_type=r.room_type.value, capacity=r.capacity,
+            )
+            if room_key in booked_rooms or room_key in date_room_set:
+                busy_rooms_list.append(room_info)
+            else:
+                free_rooms_list.append(room_info)
+
+        free_faculty_list = []
+        busy_faculty_list = []
+        for f in all_faculty:
+            fac_key = (day_name, period, f.faculty_id)
+            if fac_key in booked_fac:
+                busy_faculty_list.append(BusyFacultyResponse(
+                    faculty_id=f.faculty_id, name=f.name, reason="timetable",
+                ))
+            elif fac_key in date_fac_map:
+                busy_faculty_list.append(BusyFacultyResponse(
+                    faculty_id=f.faculty_id, name=f.name,
+                    reason=date_fac_map[fac_key],
+                ))
+            else:
+                free_faculty_list.append(FreeFacultyResponse(
+                    faculty_id=f.faculty_id, name=f.name,
+                    expertise=f.expertise or [],
+                    current_load=load_map.get(f.faculty_id, 0),
+                    max_weekly_load=f.max_weekly_load,
+                ))
+
+        slot_results.append(DateSlotCheckResponse(
+            period=period,
+            slot_label=s.label,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            free_rooms=free_rooms_list,
+            busy_rooms=busy_rooms_list,
+            free_faculty=free_faculty_list,
+            busy_faculty=busy_faculty_list,
+        ))
+
+    return DateCheckResponse(date=date, day_of_week=day_name, slots=slot_results)
 
 
 @router.get("/free-rooms/{timetable_id}", response_model=list[FreeRoomResponse])

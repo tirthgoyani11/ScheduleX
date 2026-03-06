@@ -10,13 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { CalendarClock, RefreshCw, UserPlus, BookPlus, Check, X, Loader2 } from "lucide-react";
+import { CalendarClock, RefreshCw, UserPlus, BookPlus, Check, X, Loader2, Search } from "lucide-react";
 import { useScheduling } from "@/hooks/useScheduling";
 import { useTimetable } from "@/hooks/useTimetable";
 import { useFaculty } from "@/hooks/useFaculty";
 import { useSubjects } from "@/hooks/useSubjects";
 import { useAuthStore } from "@/store/useAuthStore";
-import type { BookingStatus, FreeSlotWithRooms, FreeRoom, Timetable } from "@/types";
+import type { BookingStatus, FreeSlotWithRooms, FreeRoom, Timetable, DateSlotCheck } from "@/types";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -75,8 +75,9 @@ export default function SchedulingPage() {
         <Card><CardContent className="py-12 text-center text-muted-foreground">No published timetable available. Generate and publish one first.</CardContent></Card>
       ) : (
         <Tabs defaultValue="bookings">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="bookings" className="gap-1"><CalendarClock className="h-4 w-4" />Bookings</TabsTrigger>
+            <TabsTrigger value="slot-check" className="gap-1"><Search className="h-4 w-4" />Slot Check</TabsTrigger>
             <TabsTrigger value="reschedule" className="gap-1"><RefreshCw className="h-4 w-4" />Reschedule</TabsTrigger>
             <TabsTrigger value="extra" className="gap-1"><BookPlus className="h-4 w-4" />Extra Lecture</TabsTrigger>
             {isHOD && <TabsTrigger value="proxy" className="gap-1"><UserPlus className="h-4 w-4" />Proxy</TabsTrigger>}
@@ -92,6 +93,11 @@ export default function SchedulingPage() {
               onReject={(id) => scheduling.rejectMutation.mutate(id)}
               onCancel={(id) => scheduling.cancelMutation.mutate(id)}
             />
+          </TabsContent>
+
+          {/* ── Slot Check Tab ────────────────────────────── */}
+          <TabsContent value="slot-check">
+            <SlotCheckPanel scheduling={scheduling} />
           </TabsContent>
 
           {/* ── Reschedule Tab ────────────────────────────── */}
@@ -246,9 +252,9 @@ function RescheduleForm({
 
   const entry = timetable?.entries.find((e) => e.entry_id === entryId);
 
-  // Auto-fetch free slots + rooms when an entry is selected
+  // Auto-fetch free slots + rooms when an entry is selected (optionally filtered by date)
   const { data: options = [], isLoading: optionsLoading } = scheduling.useRescheduleOptions(
-    entryId || undefined
+    entryId || undefined, targetDate || undefined
   );
 
   // Find the rooms for the currently selected slot
@@ -306,9 +312,9 @@ function RescheduleForm({
         <CardTitle className="text-lg">Reschedule a Lecture</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Step 1 — Select entry */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
+        {/* Step 1 — Select entry + optional date */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-2 md:col-span-2">
             <Label>Step 1: Select Lecture to Reschedule</Label>
             <Select value={entryId} onValueChange={handleSelectEntry}>
               <SelectTrigger>
@@ -325,16 +331,25 @@ function RescheduleForm({
               </SelectContent>
             </Select>
           </div>
-
-          {entryId && entry && (
-            <div className="rounded-lg border p-3 bg-muted/50 text-sm space-y-1">
-              <p><strong>Current:</strong> {entry.day}, Period {entry.period}</p>
-              <p><strong>Subject:</strong> {entry.subject_name}</p>
-              <p><strong>Faculty:</strong> {entry.faculty_name}</p>
-              <p><strong>Room:</strong> {entry.room_name}</p>
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label>Target Date (optional — filters to that day)</Label>
+            <Input
+              type="date"
+              value={targetDate}
+              onChange={(e) => { setTargetDate(e.target.value); setSelectedSlot(null); setSelectedRoomId(""); }}
+            />
+          </div>
         </div>
+
+        {entryId && entry && (
+          <div className="rounded-lg border p-3 bg-muted/50 text-sm space-y-1">
+            <p><strong>Current:</strong> {entry.day}, Period {entry.period}</p>
+            <p><strong>Subject:</strong> {entry.subject_name}</p>
+            <p><strong>Faculty:</strong> {entry.faculty_name}</p>
+            <p><strong>Room:</strong> {entry.room_name}</p>
+            {targetDate && <p><strong>Checking for:</strong> {targetDate} ({new Date(targetDate + "T00:00").toLocaleDateString("en-US", { weekday: "long" })})</p>}
+          </div>
+        )}
 
         {/* Step 2 — Auto-fetched free slots */}
         {entryId && (
@@ -405,17 +420,11 @@ function RescheduleForm({
           </div>
         )}
 
-        {/* Optional fields */}
+        {/* Optional: reason */}
         {selectedRoomId && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Target Date (optional)</Label>
-              <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Reason (optional)</Label>
-              <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this being rescheduled?" rows={2} />
-            </div>
+          <div className="space-y-2">
+            <Label>Reason (optional)</Label>
+            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this being rescheduled?" rows={2} />
           </div>
         )}
 
@@ -599,6 +608,168 @@ function FreeSlotPreview({
     <div className="rounded-lg border p-3 bg-muted/30">
       <p className="text-sm font-medium mb-2">Free rooms on {day} — click a period above to see available rooms</p>
     </div>
+  );
+}
+
+
+// ── Slot Check Panel ───────────────────────────────────────────
+
+function SlotCheckPanel({
+  scheduling,
+}: {
+  scheduling: ReturnType<typeof useScheduling>;
+}) {
+  const [date, setDate] = useState("");
+  const [expandedPeriod, setExpandedPeriod] = useState<number | null>(null);
+
+  const { data: result, isLoading } = scheduling.useDateCheck(date || undefined);
+
+  const togglePeriod = (period: number) => {
+    setExpandedPeriod((prev) => (prev === period ? null : period));
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Check Slot Availability by Date</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Pick a date to see room and faculty availability for every time slot.
+          This considers both the regular timetable and any approved bookings (reschedules, extra lectures, proxies) on that specific date.
+        </p>
+
+        <div className="flex items-end gap-4">
+          <div className="space-y-2">
+            <Label>Select Date</Label>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => { setDate(e.target.value); setExpandedPeriod(null); }}
+              className="w-56"
+            />
+          </div>
+          {result && (
+            <Badge variant="outline" className="h-9 text-sm px-4">
+              {result.day_of_week}, {result.date}
+            </Badge>
+          )}
+        </div>
+
+        {isLoading && (
+          <div className="flex items-center gap-2 py-6 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Checking availability...
+          </div>
+        )}
+
+        {result && (
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-24">Period</TableHead>
+                  <TableHead className="w-32">Time</TableHead>
+                  <TableHead>Free Rooms</TableHead>
+                  <TableHead>Busy Rooms</TableHead>
+                  <TableHead>Free Faculty</TableHead>
+                  <TableHead>Busy Faculty</TableHead>
+                  <TableHead className="w-16"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {result.slots.map((slot: DateSlotCheck) => (
+                  <>
+                    <TableRow
+                      key={slot.period}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => togglePeriod(slot.period)}
+                    >
+                      <TableCell className="font-medium">P{slot.period} — {slot.slot_label}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{slot.start_time} – {slot.end_time}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                          {slot.free_rooms.length} free
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                          {slot.busy_rooms.length} busy
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                          {slot.free_faculty.length} free
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                          {slot.busy_faculty.length} busy
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-xs text-muted-foreground">{expandedPeriod === slot.period ? "▲" : "▼"}</span>
+                      </TableCell>
+                    </TableRow>
+                    {expandedPeriod === slot.period && (
+                      <TableRow key={`${slot.period}-detail`}>
+                        <TableCell colSpan={7} className="bg-muted/30 p-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Rooms */}
+                            <div>
+                              <h4 className="font-medium text-sm mb-2">Rooms</h4>
+                              <div className="space-y-1">
+                                {slot.free_rooms.map((r) => (
+                                  <div key={r.room_id} className="flex items-center gap-2 text-sm">
+                                    <span className="h-2 w-2 rounded-full bg-green-500" />
+                                    {r.room_name}
+                                    <span className="text-muted-foreground text-xs">({r.room_type}, {r.capacity} seats)</span>
+                                  </div>
+                                ))}
+                                {slot.busy_rooms.map((r) => (
+                                  <div key={r.room_id} className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <span className="h-2 w-2 rounded-full bg-red-500" />
+                                    {r.room_name}
+                                    <span className="text-xs">({r.room_type}, {r.capacity} seats)</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            {/* Faculty */}
+                            <div>
+                              <h4 className="font-medium text-sm mb-2">Faculty</h4>
+                              <div className="space-y-1">
+                                {slot.free_faculty.map((f) => (
+                                  <div key={f.faculty_id} className="flex items-center gap-2 text-sm">
+                                    <span className="h-2 w-2 rounded-full bg-green-500" />
+                                    {f.name}
+                                    <span className="text-muted-foreground text-xs">(Load: {f.current_load}/{f.max_weekly_load})</span>
+                                  </div>
+                                ))}
+                                {slot.busy_faculty.map((f) => (
+                                  <div key={f.faculty_id} className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <span className="h-2 w-2 rounded-full bg-red-500" />
+                                    {f.name}
+                                    <span className="text-xs capitalize">({f.reason.replace("_", " ")})</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        {date && !isLoading && !result && (
+          <p className="text-sm text-muted-foreground py-2">No data returned. Make sure it's a valid weekday.</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

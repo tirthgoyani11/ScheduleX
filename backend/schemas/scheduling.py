@@ -84,3 +84,28 @@ class SlotBookingResponse(BaseModel):
 
 class ApproveRejectRequest(BaseModel):
     booking_id: str
+
+
+class DateSlotCheckResponse(BaseModel):
+    """Availability for a single time slot on a specific date."""
+    period: int
+    slot_label: str
+    start_time: str
+    end_time: str
+    free_rooms: list[FreeRoomResponse]
+    busy_rooms: list[FreeRoomResponse]
+    free_faculty: list[FreeFacultyResponse]
+    busy_faculty: list["BusyFacultyResponse"]
+
+
+class BusyFacultyResponse(BaseModel):
+    faculty_id: str
+    name: str
+    reason: str  # "timetable" | "reschedule" | "extra_lecture" | "proxy"
+
+
+class DateCheckResponse(BaseModel):
+    """Full availability for all slots on a date."""
+    date: str
+    day_of_week: str
+    slots: list[DateSlotCheckResponse]
