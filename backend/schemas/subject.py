@@ -9,6 +9,8 @@ class SubjectCreate(BaseModel):
     semester: int = Field(..., ge=1, le=8)
     credits: int = Field(3, ge=1, le=6)
     weekly_periods: int = Field(3, ge=1, le=10)
+    lecture_hours: int = Field(0, ge=0, le=10)
+    lab_hours: int = Field(0, ge=0, le=10)
     needs_lab: bool = False
     batch_size: int = Field(60, ge=1, le=500)
     batch: str | None = None
@@ -20,6 +22,8 @@ class SubjectUpdate(BaseModel):
     semester: int | None = Field(None, ge=1, le=8)
     credits: int | None = Field(None, ge=1, le=6)
     weekly_periods: int | None = Field(None, ge=1, le=10)
+    lecture_hours: int | None = Field(None, ge=0, le=10)
+    lab_hours: int | None = Field(None, ge=0, le=10)
     needs_lab: bool | None = None
     batch_size: int | None = Field(None, ge=1, le=500)
     batch: str | None = None
@@ -33,6 +37,8 @@ class SubjectResponse(BaseModel):
     semester: int
     credits: int
     weekly_periods: int
+    lecture_hours: int
+    lab_hours: int
     needs_lab: bool
     batch_size: int
     batch: str | None
