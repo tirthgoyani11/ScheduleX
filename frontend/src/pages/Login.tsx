@@ -26,6 +26,23 @@ export default function LoginPage() {
     }
   };
 
+  const quickLogins = [
+    { label: "Super Admin", email: "admin@cvmu.edu.in", password: "admin123" },
+    { label: "HOD (CP)", email: "hod.cp@cvmu.edu.in", password: "hod123" },
+    { label: "Faculty (CP)", email: "rajesh.patel@cvmu.edu.in", password: "faculty123" },
+  ];
+
+  const handleFastLogin = async (email: string, password: string, label: string) => {
+    try {
+      await login(email, password);
+      toast.success(`Signed in as ${label}`);
+      navigate("/");
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Fast login failed";
+      toast.error(msg);
+    }
+  };
+
   const features = [
     "AI-powered conflict detection & resolution",
     "Multi-department resource optimization",
@@ -92,6 +109,21 @@ export default function LoginPage() {
             <Button type="submit" className="w-full rounded-xl btn-press" disabled={isLoading}>
               {isLoading ? "Signing in..." : "Sign in"}
             </Button>
+            <div className="grid grid-cols-3 gap-2 pt-1">
+              {quickLogins.map((q) => (
+                <Button
+                  key={q.email}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl text-xs"
+                  disabled={isLoading}
+                  onClick={() => handleFastLogin(q.email, q.password, q.label)}
+                >
+                  {q.label}
+                </Button>
+              ))}
+            </div>
           </form>
 
           <p className="text-center text-sm text-muted-foreground mt-6">
