@@ -98,8 +98,7 @@ async def signup(request: RegisterRequest, db: AsyncSession = Depends(get_db)):
     Creates a new college, department, and super_admin user in one step.
     Used for first-time setup when no admin exists yet.
     """
-    from models.college import College
-    from models.department import Department
+    from models.college import College, Department
 
     # Check email uniqueness
     existing = await db.execute(select(User).where(User.email == request.email))

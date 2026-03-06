@@ -2,7 +2,7 @@
 import uuid
 import enum
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, DateTime, Integer, Enum, func, UniqueConstraint
+from sqlalchemy import String, ForeignKey, DateTime, Integer, Enum, func
 from sqlalchemy.orm import Mapped, mapped_column
 from database import Base
 
@@ -20,9 +20,6 @@ class TimeSlotConfig(Base):
     Only LECTURE and LAB slots are passed to the solver; BREAK slots are display-only.
     """
     __tablename__ = "time_slot_configs"
-    __table_args__ = (
-        UniqueConstraint("college_id", "slot_order", name="uq_college_slot_order"),
-    )
 
     slot_id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
