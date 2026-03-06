@@ -30,15 +30,16 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
     batches = data.get("batches", [])
     slot_lookup = data.get("slot_lookup", {})
 
-    # ── Classify periods by type ──────────────────────────────────────────────
-    lecture_periods = []
-    lab_periods = []
+    # ── Classify periods — all non-break periods available for both theory & lab
+    usable_periods = []
     for p in periods:
         slot = slot_lookup.get(p)
-        if slot and slot.slot_type == SlotType.LAB:
-            lab_periods.append(p)
-        else:
-            lecture_periods.append(p)
+        if slot and slot.slot_type == SlotType.BREAK:
+            continue
+        usable_periods.append(p)
+    # Keep lecture_periods & lab_periods as aliases (both = all usable)
+    lecture_periods = list(usable_periods)
+    lab_periods = list(usable_periods)
 
     # ── Classify rooms ────────────────────────────────────────────────────────
     classrooms = [r for r in rooms if r.room_type.value != "lab"]
@@ -81,6 +82,7 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
     by_lab_batch_slot: dict[tuple, list] = defaultdict(list)
     by_lab_subject_slot: dict[tuple, list] = defaultdict(list)
     by_lab_slot: dict[tuple, list] = defaultdict(list)
+    by_lab_sfb_day_period: dict[tuple, list] = defaultdict(list)  # (sid,fid,bid,day,period) → [var]
 
     theory_count = 0
     lab_count = 0
@@ -162,6 +164,7 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
                                 by_lab_batch_slot[(bid, day, period)].append(var)
                                 by_lab_subject_slot[(sid, day, period)].append(var)
                                 by_lab_slot[(day, period)].append(var)
+                                by_lab_sfb_day_period[(sid, fid, bid, day, period)].append(var)
 
                                 lab_count += 1
 
@@ -193,6 +196,7 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
         "by_lab_batch_slot": dict(by_lab_batch_slot),
         "by_lab_subject_slot": dict(by_lab_subject_slot),
         "by_lab_slot": dict(by_lab_slot),
+        "by_lab_sfb_day_period": dict(by_lab_sfb_day_period),
         # meta
         "lecture_periods": lecture_periods,
         "lab_periods": lab_periods,

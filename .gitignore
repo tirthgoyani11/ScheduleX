@@ -14,6 +14,8 @@ backend/.env
 
 # Database
 *.db
+*.sqlite3
+backend/chroma_data/
 
 # Test output
 backend/test_output.txt

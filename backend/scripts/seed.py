@@ -102,23 +102,23 @@ async def seed():
                 name=name,
                 employee_id=emp_id,
                 expertise=expertise,
-                max_weekly_load=18,
+                max_weekly_load=24,
                 preferred_time=pref,
             ))
 
         # ── Subjects (with lecture_hours + lab_hours) ──
         # lecture_hours = theory periods per week
-        # lab_hours     = lab sessions per week (each = 1 lab-type period)
+        # lab_hours     = 2 consecutive periods per week (1 lab session = 2 hrs)
         # weekly_periods = lecture_hours + lab_hours (total contact per batch)
         subject_data = [
             # (name, code, sem, credits, lec_hrs, lab_hrs, batch_size)
-            ("Computer Networks",       "CS301", 5, 4, 3, 1, 60),
-            ("Operating Systems",       "CS302", 5, 4, 3, 1, 60),
-            ("Database Management",     "CS303", 5, 3, 3, 1, 60),
+            ("Computer Networks",       "CS301", 5, 4, 3, 2, 60),
+            ("Operating Systems",       "CS302", 5, 4, 3, 2, 60),
+            ("Database Management",     "CS303", 5, 3, 3, 2, 60),
             ("Software Engineering",    "CS304", 5, 3, 3, 0, 60),
             ("Design & Analysis of Algorithms", "CS305", 5, 4, 3, 0, 60),
             ("Theory of Computation",   "CS306", 5, 3, 3, 0, 60),
-            ("Web Programming",         "CS307", 5, 3, 3, 1, 60),
+            ("Web Programming",         "CS307", 5, 3, 2, 2, 60),
         ]
         subject_ids = []
         for name, code, sem, credits, lh, lab_h, bs in subject_data:
@@ -160,7 +160,7 @@ async def seed():
                 has_ac=ac,
             ))
 
-        # ── Time Slots ──
+        # ── Time Slots (uniform 1-hour periods) ──
         slot_data = [
             (1, "Period 1", "09:00", "10:00", SlotType.LECTURE),
             (2, "Period 2", "10:00", "11:00", SlotType.LECTURE),
@@ -168,8 +168,8 @@ async def seed():
             (4, "Period 4", "12:00", "13:00", SlotType.LECTURE),
             (5, "Lunch",    "13:00", "14:00", SlotType.BREAK),
             (6, "Period 5", "14:00", "15:00", SlotType.LECTURE),
-            (7, "Lab 1",   "15:00", "17:00", SlotType.LAB),
-            (8, "Lab 2",   "17:00", "19:00", SlotType.LAB),
+            (7, "Period 6", "15:00", "16:00", SlotType.LECTURE),
+            (8, "Period 7", "16:00", "17:00", SlotType.LECTURE),
         ]
         for order, label, start, end, stype in slot_data:
             db.add(TimeSlotConfig(
