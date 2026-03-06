@@ -63,32 +63,25 @@ export function exportDepartmentPDF(
 
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
-  const margin = 8;
+  const margin = 5;
 
-  // ── Header Section ──
+  // ── Header Section (compact) ──
   const college = collegeName || "Charutar Vidya Mandal University";
   const dept = deptName || "Department of Computer Engineering";
 
-  doc.setFontSize(13);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(college, pageW / 2, 12, { align: "center" });
+  doc.text(college, pageW / 2, 8, { align: "center" });
 
-  doc.setFontSize(10);
+  doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
-  doc.text(`Timetable For ${tt.academic_year}`, pageW / 2, 18, { align: "center" });
-
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "bold");
-  doc.text(`Program: ${dept}, Semester: ${tt.semester}`, pageW / 2, 23, { align: "center" });
+  doc.text(`Timetable For ${tt.academic_year}  |  Program: ${dept}, Semester: ${tt.semester}`, pageW / 2, 13, { align: "center" });
 
   // Info row
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "normal");
-  const infoY = 27;
-  doc.text(`Status: ${tt.status}`, margin, infoY);
-  doc.text(`Score: ${tt.optimization_score ?? "N/A"}/100`, margin + 50, infoY);
+  doc.setFontSize(6);
   const dateStr = tt.created_at ? new Date(tt.created_at).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN");
-  doc.text(`Generated: ${dateStr}`, pageW - margin, infoY, { align: "right" });
+  doc.text(`Status: ${tt.status}     Score: ${tt.optimization_score ?? "N/A"}/100`, margin, 17);
+  doc.text(`Generated: ${dateStr}`, pageW - margin, 17, { align: "right" });
 
   // ── Build the main timetable grid ──
   // For lab periods, each day gets split into batch sub-columns
