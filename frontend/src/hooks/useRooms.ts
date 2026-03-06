@@ -46,16 +46,6 @@ export function useRooms() {
     onError: () => toast.error("Failed to delete room"),
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, ...body }: { id: string; [key: string]: unknown }) =>
-      api.put<Room>(`/rooms/${id}`, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["rooms"] });
-      toast.success("Room updated");
-    },
-    onError: () => toast.error("Failed to update room"),
-  });
-
   return {
     data,
     isLoading,
