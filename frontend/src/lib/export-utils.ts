@@ -118,7 +118,7 @@ export function exportDepartmentPDF(
     // Time cell
     row.push({
       content: `${slot.start_time} to ${slot.end_time}\n${slot.label}`,
-      styles: { fontStyle: "bold", fontSize: 6, halign: "center", valign: "middle" },
+      styles: { fontStyle: "bold", fontSize: 5, halign: "center", valign: "middle" },
     });
 
     if (slot.slot_type === "break") {
@@ -128,7 +128,7 @@ export function exportDepartmentPDF(
         colSpan: days.length * (hasBatches ? numBatches : 1),
         styles: {
           halign: "center", valign: "middle", fontStyle: "bold",
-          fillColor: [255, 255, 200], fontSize: 8,
+          fillColor: [255, 255, 200], fontSize: 6,
         },
       });
       bodyRows.push(row);
@@ -147,7 +147,7 @@ export function exportDepartmentPDF(
           if (entry) {
             row.push({
               content: `${entry.subject_name}\n${facultyAbbr(entry.faculty_name)}\n${entry.room_name}`,
-              styles: { fontSize: 5.5, halign: "center", valign: "middle", cellPadding: 1 },
+              styles: { fontSize: 4.5, halign: "center", valign: "middle", cellPadding: 0.5 },
             });
           } else {
             row.push({ content: "—", styles: { halign: "center", valign: "middle", textColor: [180, 180, 180] } });
@@ -160,7 +160,7 @@ export function exportDepartmentPDF(
           row.push({
             content: `${e.subject_name}\n${facultyAbbr(e.faculty_name)}\n${e.room_name}`,
             colSpan: numBatches,
-            styles: { fontSize: 6.5, halign: "center", valign: "middle" },
+            styles: { fontSize: 5.5, halign: "center", valign: "middle" },
           });
         } else {
           row.push({
@@ -175,7 +175,7 @@ export function exportDepartmentPDF(
           const e = cellEntries[0];
           row.push({
             content: `${e.subject_name}\n${facultyAbbr(e.faculty_name)}\n${e.room_name}`,
-            styles: { fontSize: 6.5, halign: "center", valign: "middle" },
+            styles: { fontSize: 5.5, halign: "center", valign: "middle" },
           });
         } else {
           row.push({ content: "—", styles: { halign: "center", valign: "middle", textColor: [180, 180, 180] } });
@@ -187,18 +187,19 @@ export function exportDepartmentPDF(
   }
 
   autoTable(doc, {
-    startY: 30,
+    startY: 19,
     head: headRows,
     body: bodyRows,
     theme: "grid",
-    styles: { fontSize: 6, cellPadding: 1.5, valign: "middle", overflow: "linebreak", lineWidth: 0.2 },
-    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold", halign: "center", fontSize: 7, minCellHeight: 7 },
-    columnStyles: { 0: { cellWidth: 22 } },
+    margin: { left: margin, right: margin },
+    styles: { fontSize: 5, cellPadding: 0.8, valign: "middle", overflow: "linebreak", lineWidth: 0.15 },
+    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold", halign: "center", fontSize: 5.5, minCellHeight: 5 },
+    columnStyles: { 0: { cellWidth: 18 } },
     tableLineColor: [0, 0, 0],
-    tableLineWidth: 0.2,
+    tableLineWidth: 0.15,
   });
 
-  let curY = (doc as any).lastAutoTable.finalY + 6;
+  let curY = (doc as any).lastAutoTable.finalY + 3;
 
   // ── Subject Legend Table ──
   const subjectSet = new Map<string, TimetableEntry>();
@@ -233,78 +234,60 @@ export function exportDepartmentPDF(
   }
 
   if (subjectRows.length > 0) {
-    // Check if we need a new page
-    if (curY > 170) { doc.addPage(); curY = 12; }
-
-    doc.setFontSize(8);
+    doc.setFontSize(6.5);
     doc.setFont("helvetica", "bold");
     doc.text("Subject Details:", margin, curY);
-    curY += 2;
+    curY += 1;
 
     autoTable(doc, {
       startY: curY,
       head: [["SUBJECT CODE", "NAME OF SUBJECT", "L", "P", "T", "C"]],
       body: subjectRows,
       theme: "grid",
-      styles: { fontSize: 6.5, cellPadding: 1.5 },
-      headStyles: { fillColor: [255, 255, 0], textColor: 0, fontStyle: "bold", halign: "center", fontSize: 6.5 },
+      margin: { left: margin },
+      styles: { fontSize: 5.5, cellPadding: 0.7 },
+      headStyles: { fillColor: [255, 255, 0], textColor: 0, fontStyle: "bold", halign: "center", fontSize: 5.5 },
       columnStyles: {
-        0: { cellWidth: 25, halign: "center" },
-        1: { cellWidth: 70 },
-        2: { cellWidth: 10, halign: "center" },
-        3: { cellWidth: 10, halign: "center" },
-        4: { cellWidth: 10, halign: "center" },
-        5: { cellWidth: 10, halign: "center" },
+        0: { cellWidth: 20, halign: "center" },
+        1: { cellWidth: 55 },
+        2: { cellWidth: 8, halign: "center" },
+        3: { cellWidth: 8, halign: "center" },
+        4: { cellWidth: 8, halign: "center" },
+        5: { cellWidth: 8, halign: "center" },
       },
       tableWidth: "wrap",
       tableLineColor: [0, 0, 0],
-      tableLineWidth: 0.2,
+      tableLineWidth: 0.15,
     });
 
-    curY = (doc as any).lastAutoTable.finalY + 5;
+    curY = (doc as any).lastAutoTable.finalY + 2;
   }
 
-  // ── Faculty Legend ──
+  // ── Faculty Legend (inline) ──
   const facultyNames = Array.from(new Set(tt.entries.map((e) => e.faculty_name))).sort();
   if (facultyNames.length > 0) {
-    if (curY > 180) { doc.addPage(); curY = 12; }
-
-    doc.setFontSize(8);
+    doc.setFontSize(6);
     doc.setFont("helvetica", "bold");
     doc.text("Faculty:", margin, curY);
-    curY += 2;
+    curY += 3;
 
-    // Show as 2-column or 3-column layout
+    const legendParts = facultyNames.map((fn) => `${facultyAbbr(fn)} - ${fn}`);
+    // Lay out in rows, ~3 per row with spacing
+    const colW = 90;
     const cols = 3;
-    const legendRows: string[][] = [];
-    for (let i = 0; i < facultyNames.length; i += cols) {
-      const row: string[] = [];
-      for (let c = 0; c < cols; c++) {
-        const fn = facultyNames[i + c];
-        row.push(fn ? `${facultyAbbr(fn)} - ${fn}` : "");
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(5.5);
+    for (let i = 0; i < legendParts.length; i += cols) {
+      for (let c = 0; c < cols && i + c < legendParts.length; c++) {
+        doc.text(legendParts[i + c], margin + c * colW, curY);
       }
-      legendRows.push(row);
+      curY += 3.5;
     }
-
-    autoTable(doc, {
-      startY: curY,
-      body: legendRows,
-      theme: "plain",
-      styles: { fontSize: 6.5, cellPadding: 1 },
-      columnStyles: {
-        0: { cellWidth: 80 },
-        1: { cellWidth: 80 },
-        2: { cellWidth: 80 },
-      },
-      tableWidth: "wrap",
-    });
-
-    curY = (doc as any).lastAutoTable.finalY + 6;
+    curY += 1;
   }
 
   // ── Footer ──
-  if (curY > 190) { doc.addPage(); curY = 12; }
-  doc.setFontSize(7);
+  doc.setFontSize(6);
   doc.setFont("helvetica", "normal");
   doc.text("Prepared by: ___________________", margin, curY);
   doc.text("Verified by HOD: ___________________", pageW / 2 - 30, curY);
