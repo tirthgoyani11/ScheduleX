@@ -1,0 +1,90 @@
+import { Link } from "react-router-dom";
+import { BookOpen, Users, Building2, Zap, Eye, Download, BarChart3 } from "lucide-react";
+import { MetricCard } from "@/components/common/MetricCard";
+import { PageHeader } from "@/components/common/PageHeader";
+import { Button } from "@/components/ui/button";
+import { useDashboard } from "@/hooks/useDashboard";
+import { useAuthStore } from "@/store/useAuthStore";
+import { WorkloadChart } from "@/components/dashboard/WorkloadChart";
+import { RoomUtilizationChart } from "@/components/dashboard/RoomUtilizationChart";
+import { DashboardSkeleton } from "@/components/skeletons/PageSkeletons";
+
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+};
+
+export default function DashboardPage() {
+  const { stats, facultyLoad, roomUtilisation, isLoading } = useDashboard();
+  const user = useAuthStore((s) => s.user);
+
+  if (isLoading) return <DashboardSkeleton />;
+
+  const userName = user?.full_name?.split(" ")[0] ?? "Admin";
+
+  // Derive workload chart data from faculty load
+  const workloadData = facultyLoad.map((f) => ({
+    name: f.name.split(" ").pop() ?? f.name,
+    fullName: f.name,
+    current: f.assigned_periods,
+    max: f.max_weekly_load,
+    percentage: f.utilisation_pct,
+  }));
+
+  // Derive room utilisation average
+  const avgRoomUtil = roomUtilisation.length > 0
+    ? Math.round(roomUtilisation.reduce((sum, r) => sum + r.utilisation_pct, 0) / roomUtilisation.length)
+    : 0;
+
+  const COLORS = ["hsl(142,64%,24%)", "hsl(27,96%,48%)", "hsl(221,83%,53%)", "hsl(280,67%,51%)", "hsl(0,72%,51%)"];
+  const roomUtilData = roomUtilisation.map((r, i) => ({
+    name: r.name,
+    value: r.utilisation_pct,
+    fill: COLORS[i % COLORS.length],
+  }));
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title={`${greeting()}, ${userName} 👋`} description={new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}>
+        <div className="flex gap-2">
+          <Link to="/timetable/generate">
+            <Button className="rounded-xl btn-press gap-2"><Zap className="h-4 w-4" />Generate</Button>
+          </Link>
+          <Link to="/export">
+            <Button variant="outline" className="rounded-xl gap-2"><Download className="h-4 w-4" />Export</Button>
+          </Link>
+        </div>
+      </PageHeader>
+
+      {/* Metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard icon={BookOpen} value={stats.subject_count} label="Subjects" chipClass="chip-purple" />
+        <MetricCard icon={Users} value={stats.faculty_count} label="Faculty" chipClass="chip-blue" />
+        <MetricCard icon={BarChart3} value={stats.timetable_count} label="Timetables" chipClass="chip-green" />
+        <MetricCard icon={Building2} value={stats.room_count} label="Rooms" chipClass="chip-orange" />
+      </div>
+
+      {/* Charts row */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="lg:col-span-3 bg-card rounded-lg shadow-sm p-5">
+          <h3 className="text-base font-medium font-display mb-4">Faculty Workload</h3>
+          {workloadData.length > 0 ? (
+            <WorkloadChart data={workloadData} />
+          ) : (
+            <p className="text-sm text-muted-foreground">No faculty data yet. Add faculty members to see workload.</p>
+          )}
+        </div>
+        <div className="lg:col-span-2 bg-card rounded-lg shadow-sm p-5">
+          <h3 className="text-base font-medium font-display mb-4">Room Utilization</h3>
+          {roomUtilData.length > 0 ? (
+            <RoomUtilizationChart data={roomUtilData} percentage={avgRoomUtil} />
+          ) : (
+            <p className="text-sm text-muted-foreground">No room data yet. Add rooms and generate a timetable.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

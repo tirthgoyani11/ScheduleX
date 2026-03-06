@@ -1,0 +1,188 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Base surfaces */
+    --background: 40 14% 96%;
+    --foreground: 0 0% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 8%;
+
+    /* Brand */
+    --primary: 0 0% 8%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary */
+    --secondary: 40 10% 94%;
+    --secondary-foreground: 0 0% 8%;
+
+    /* Muted */
+    --muted: 40 10% 94%;
+    --muted-foreground: 220 9% 46%;
+
+    /* Accent */
+    --accent: 40 10% 94%;
+    --accent-foreground: 0 0% 8%;
+
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders & inputs */
+    --border: 40 10% 90%;
+    --border-strong: 40 6% 82%;
+    --input: 40 10% 90%;
+    --ring: 0 0% 8%;
+    --radius: 1rem;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 9% 46%;
+    --sidebar-primary: 0 0% 8%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 40 14% 96%;
+    --sidebar-accent-foreground: 0 0% 8%;
+    --sidebar-border: 40 10% 90%;
+    --sidebar-ring: 0 0% 8%;
+
+    /* Semantic chips */
+    --chip-purple-bg: 263 70% 96%;
+    --chip-purple-txt: 263 67% 50%;
+    --chip-green-bg: 142 72% 93%;
+    --chip-green-txt: 142 64% 24%;
+    --chip-yellow-bg: 48 96% 89%;
+    --chip-yellow-txt: 40 82% 31%;
+    --chip-blue-bg: 214 95% 93%;
+    --chip-blue-txt: 224 76% 48%;
+    --chip-pink-bg: 326 78% 95%;
+    --chip-pink-txt: 336 74% 35%;
+    --chip-orange-bg: 27 96% 92%;
+    --chip-orange-txt: 21 90% 48%;
+    --chip-red-bg: 0 93% 94%;
+    --chip-red-txt: 0 72% 51%;
+
+    /* Subject types */
+    --subject-theory: 263 70% 96%;
+    --subject-lab: 142 72% 93%;
+    --subject-shared: 214 95% 93%;
+    --subject-conflict: 0 93% 94%;
+
+    /* Text hierarchy */
+    --text-primary: 0 0% 8%;
+    --text-secondary: 220 13% 33%;
+    --text-muted: 220 9% 63%;
+    --text-inverse: 0 0% 100%;
+  }
+
+  .dark {
+    --background: 0 0% 6%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 0 0% 95%;
+    --primary-foreground: 0 0% 8%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 220 9% 63%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 95%;
+    --border: 0 0% 18%;
+    --border-strong: 0 0% 25%;
+    --input: 0 0% 18%;
+    --ring: 0 0% 95%;
+    --sidebar-background: 0 0% 8%;
+    --sidebar-foreground: 0 0% 63%;
+    --sidebar-primary: 0 0% 95%;
+    --sidebar-primary-foreground: 0 0% 8%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 0 0% 18%;
+    --sidebar-ring: 0 0% 95%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-body text-sm antialiased;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  /* Page entrance animation */
+  .page-enter {
+    animation: pageEnter 0.3s ease-out forwards;
+  }
+  
+  @keyframes pageEnter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Card hover lift */
+  .card-hover {
+    @apply transition-all duration-200;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.08);
+  }
+
+  /* Button press */
+  .btn-press:active {
+    transform: scale(0.98);
+  }
+
+  /* Form field shake */
+  .field-error {
+    animation: shake 0.3s ease-in-out;
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+
+  /* Skeleton shimmer */
+  .skeleton-shimmer {
+    background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--background)) 50%, hsl(var(--muted)) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Status chip base */
+  .chip {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .chip-purple { background: hsl(var(--chip-purple-bg)); color: hsl(var(--chip-purple-txt)); }
+  .chip-green { background: hsl(var(--chip-green-bg)); color: hsl(var(--chip-green-txt)); }
+  .chip-yellow { background: hsl(var(--chip-yellow-bg)); color: hsl(var(--chip-yellow-txt)); }
+  .chip-blue { background: hsl(var(--chip-blue-bg)); color: hsl(var(--chip-blue-txt)); }
+  .chip-pink { background: hsl(var(--chip-pink-bg)); color: hsl(var(--chip-pink-txt)); }
+  .chip-orange { background: hsl(var(--chip-orange-bg)); color: hsl(var(--chip-orange-txt)); }
+  .chip-red { background: hsl(var(--chip-red-bg)); color: hsl(var(--chip-red-txt)); }
+}
