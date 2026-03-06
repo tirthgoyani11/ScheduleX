@@ -10,6 +10,7 @@ Two variable sets:
   Lab:     X_l[faculty, subject, batch, room, day, period]
            Only for LAB-type periods and LAB rooms.
            Per-batch scheduling with synchronisation constraints.
+           Any department faculty can teach labs (not limited to theory teacher).
 
 Indexed lookups are built for O(1) constraint access.
 """
@@ -169,6 +170,7 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
 
     # ── Lab-specific indexes ──────────────────────────────────────────────────
     by_lab_subject_faculty_batch: dict[tuple, list] = defaultdict(list)
+    by_lab_subject_batch: dict[tuple, list] = defaultdict(list)  # (sid,bid) → [(key,var)]
     by_lab_batch_slot: dict[tuple, list] = defaultdict(list)
     by_lab_subject_slot: dict[tuple, list] = defaultdict(list)
     by_lab_slot: dict[tuple, list] = defaultdict(list)
@@ -222,13 +224,23 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
 
                             theory_count += 1
 
-            # ── Lab variables ─────────────────────────────────────────────────
-            if subject.lab_hours > 0 and batches and lab_periods:
-                subject_lab_needs = _infer_subject_lab_needs(subject.name)
+    log.info(
+        "theory_vars_built", theory_vars=theory_count, skipped=skipped,
+    )
+
+    # ── Lab variables (any dept faculty can teach labs) ────────────────────────
+    # Decoupled from theory: iterate ALL faculty × ALL lab subjects so the
+    # solver can pick the best faculty for each batch's lab independently.
+    lab_subjects = [s for s in subjects if s.lab_hours > 0]
+    if batches and lab_periods and lab_subjects:
+        for subject in lab_subjects:
+            sid = subject.subject_id
+            subject_lab_needs = _infer_subject_lab_needs(subject.name)
+            for faculty in data["faculty"]:
+                fid = faculty.faculty_id
                 for batch in batches:
                     bid = batch.batch_id
                     for room in lab_rooms:
-                        # Only allow labs whose category matches the subject
                         if lab_room_categories[room.room_id] not in subject_lab_needs:
                             continue
                         if room.capacity < batch.size:
@@ -256,6 +268,7 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
                                 by_lab_subject_faculty_batch[(sid, fid, bid)].append(
                                     (key, var)
                                 )
+                                by_lab_subject_batch[(sid, bid)].append((key, var))
                                 by_lab_batch_slot[(bid, day, period)].append(var)
                                 by_lab_subject_slot[(sid, day, period)].append(var)
                                 by_lab_slot[(day, period)].append(var)
@@ -289,6 +302,7 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
         "by_theory_subject_faculty_day": dict(by_theory_subject_faculty_day),
         # lab-specific
         "by_lab_subject_faculty_batch": dict(by_lab_subject_faculty_batch),
+        "by_lab_subject_batch": dict(by_lab_subject_batch),
         "by_lab_batch_slot": dict(by_lab_batch_slot),
         "by_lab_subject_slot": dict(by_lab_subject_slot),
         "by_lab_slot": dict(by_lab_slot),

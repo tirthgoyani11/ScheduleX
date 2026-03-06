@@ -15,7 +15,7 @@ Theory-specific:
   HC10:  3-credit subjects with ≥2 lecture_hours must span ≥2 days
 
 Lab-specific:
-  HC7l:    Each (subject, faculty, batch) gets exactly lab_hours lab slots
+  HC7l:    Each (subject, batch) gets exactly lab_hours lab slots (any faculty)
   HC8l:    Each batch has at most 1 lab at any (day, lab_period)
   HCsync:  All batches must have labs at the SAME (day, period) — synchronisation
   HCrot:   At most 1 batch per subject at any (day, lab_period) — rotation
@@ -91,20 +91,21 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
             model.AddAtMostOne([v for _, v in slot_entries])
             constraint_count += 1
 
-    # ── HC7l: Lab — each (subject, faculty, batch) gets exactly lab_hours ─────
+    # ── HC7l: Lab — each (subject, batch) gets exactly lab_hours ──────────────
+    # Any department faculty can teach labs (decoupled from theory teacher).
+    by_lab_subject_batch = variables.get("by_lab_subject_batch", {})
     for subject in data["subjects"]:
         if subject.lab_hours <= 0:
             continue
-        for fid in faculty_subject_map.get(subject.subject_id, []):
-            for batch in batches:
-                entries = by_lab_subject_faculty_batch.get(
-                    (subject.subject_id, fid, batch.batch_id), []
+        for batch in batches:
+            entries = by_lab_subject_batch.get(
+                (subject.subject_id, batch.batch_id), []
+            )
+            if entries:
+                model.Add(
+                    sum(v for _, v in entries) == subject.lab_hours
                 )
-                if entries:
-                    model.Add(
-                        sum(v for _, v in entries) == subject.lab_hours
-                    )
-                    constraint_count += 1
+                constraint_count += 1
 
     # ── HC8l: Each batch at most 1 lab per (day, period) ──────────────────────
     for (bid, day, period), bvars in by_lab_batch_slot.items():
@@ -165,19 +166,26 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
         return True
 
     lab_room_list = [r for r in data["rooms"] if r.room_type.value == "lab"]
+    all_faculty = data["faculty"]
     for subject in data["subjects"]:
         lh = subject.lab_hours
         if lh < 2:
             continue
-        for fid in faculty_subject_map.get(subject.subject_id, []):
-            for batch in batches:
-                sid = subject.subject_id
-                bid = batch.batch_id
-                entries = by_lab_subject_faculty_batch.get((sid, fid, bid), [])
-                if not entries:
-                    continue
+        for batch in batches:
+            sid = subject.subject_id
+            bid = batch.batch_id
+            # Check this (subject, batch) has any lab vars at all
+            sb_entries = by_lab_subject_batch.get((sid, bid), [])
+            if not sb_entries:
+                continue
 
-                start_vars = []
+            # Build start_vars across ALL faculty — solver picks best one
+            start_vars = []
+            for faculty in all_faculty:
+                fid = faculty.faculty_id
+                # Skip this faculty if they have no lab vars for this subject+batch
+                if not by_lab_subject_faculty_batch.get((sid, fid, bid)):
+                    continue
                 for day in days:
                     for i in range(len(sorted_lab)):
                         # Build a block of lh adjacent schedulable periods
@@ -224,9 +232,9 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
                                 model.Add(rv == 1).OnlyEnforceIf(sv)
                             constraint_count += len(room_vars)
 
-                if start_vars:
-                    model.AddExactlyOne(start_vars)
-                    constraint_count += 1
+            if start_vars:
+                model.AddExactlyOne(start_vars)
+                constraint_count += 1
 
     # ── HC_theory_lab: Theory & labs cannot share the same (day, period) ──────
     # Theory is attended by ALL students; if a lab is running for ANY batch,

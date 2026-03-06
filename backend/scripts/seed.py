@@ -9,7 +9,7 @@ Subjects    : ~230+ (all semesters incl. open & program electives)
 Rooms       : 35 classrooms (7/dept) + 50 labs + 3 seminar halls
 Exam Venues : 4
 Batches     : A, B, C per dept per semester (20 students each)
-Time Slots  : 7 lecture periods + 5-min breaks between + lunch
+Time Slots  : 7 lecture periods + lunch break
 
 Usage: python scripts/seed.py
 """
@@ -596,22 +596,17 @@ async def seed():
             ))
 
         # ════════════════════════════════════════════════════════
-        # TIME SLOTS  (7 lectures + 5-min breaks between + lunch)
+        # TIME SLOTS  (7 lectures + lunch break)
         # ════════════════════════════════════════════════════════
         slot_data = [
             (1,  "Period 1",  "09:00", "10:00", SlotType.LECTURE),
-            (2,  "Break",     "10:00", "10:05", SlotType.BREAK),
-            (3,  "Period 2",  "10:05", "11:05", SlotType.LECTURE),
-            (4,  "Break",     "11:05", "11:10", SlotType.BREAK),
-            (5,  "Period 3",  "11:10", "12:10", SlotType.LECTURE),
-            (6,  "Break",     "12:10", "12:15", SlotType.BREAK),
-            (7,  "Period 4",  "12:15", "13:15", SlotType.LECTURE),
-            (8,  "Lunch",     "13:15", "14:00", SlotType.BREAK),
-            (9,  "Period 5",  "14:00", "15:00", SlotType.LECTURE),
-            (10, "Break",     "15:00", "15:05", SlotType.BREAK),
-            (11, "Period 6",  "15:05", "16:05", SlotType.LECTURE),
-            (12, "Break",     "16:05", "16:10", SlotType.BREAK),
-            (13, "Period 7",  "16:10", "17:10", SlotType.LECTURE),
+            (2,  "Period 2",  "10:00", "11:00", SlotType.LECTURE),
+            (3,  "Period 3",  "11:00", "12:00", SlotType.LECTURE),
+            (4,  "Period 4",  "12:00", "13:00", SlotType.LECTURE),
+            (5,  "Lunch",     "13:00", "14:00", SlotType.BREAK),
+            (6,  "Period 5",  "14:00", "15:00", SlotType.LECTURE),
+            (7,  "Period 6",  "15:00", "16:00", SlotType.LECTURE),
+            (8,  "Period 7",  "16:00", "17:00", SlotType.LECTURE),
         ]
         for order, label, start, end, stype in slot_data:
             db.add(TimeSlotConfig(
@@ -731,7 +726,7 @@ async def seed():
             print(f"    {name} ({vtype.value}, cap={cap})")
         print()
         print(f"  Batches: {total_batches} (A–C × {len(departments)} depts × Sem 1–8, 20 students each)")
-        print(f"  Time Slots: {len(slot_data)} ({sum(1 for s in slot_data if s[4] == SlotType.LECTURE)} lectures + breaks)")
+        print(f"  Time Slots: {len(slot_data)} ({sum(1 for s in slot_data if s[4] == SlotType.LECTURE)} lectures + lunch break)")
         print()
         print("=" * 70)
 
