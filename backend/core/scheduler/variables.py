@@ -191,7 +191,7 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
                 continue
 
             # ── Theory variables ──────────────────────────────────────────────
-            lh = subject.lecture_hours if subject.lecture_hours else subject.weekly_periods
+            lh = subject.lecture_hours if subject.lecture_hours is not None else subject.weekly_periods
             if lh > 0:
                 for room in classrooms:
                     if room.capacity < subject.batch_size:

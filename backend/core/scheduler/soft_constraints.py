@@ -177,9 +177,9 @@ def apply_soft_constraints(
     # ── SC6: Day balance — discourage empty & overloaded days (weight: 35) ───
     # Penalize if a day has no theory at all (empty) or too many (> max_per_day)
     total_lecture_hours = sum(
-        (s.lecture_hours or s.weekly_periods)
+        (s.lecture_hours if s.lecture_hours is not None else s.weekly_periods)
         for s in data["subjects"]
-        if (s.lecture_hours or s.weekly_periods) > 0
+        if (s.lecture_hours if s.lecture_hours is not None else s.weekly_periods) > 0
     )
     max_per_day = max(3, -(-total_lecture_hours // len(days)) + 1)  # ceil + 1
     for day in days:

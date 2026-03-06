@@ -74,7 +74,7 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
 
     # ── HC7t: Theory — each (subject, faculty) assigned exactly lecture_hours ─
     for subject in data["subjects"]:
-        lh = subject.lecture_hours if subject.lecture_hours else subject.weekly_periods
+        lh = subject.lecture_hours if subject.lecture_hours is not None else subject.weekly_periods
         if lh <= 0:
             continue
         for fid in faculty_subject_map.get(subject.subject_id, []):
@@ -266,7 +266,7 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
 
     # ── HC10: 3-credit theory subjects must span ≥2 days ──────────────────────
     for subject in data["subjects"]:
-        lh = subject.lecture_hours if subject.lecture_hours else subject.weekly_periods
+        lh = subject.lecture_hours if subject.lecture_hours is not None else subject.weekly_periods
         if subject.credits >= 3 and lh >= 2:
             for fid in faculty_subject_map.get(subject.subject_id, []):
                 day_indicators: dict[str, cp_model.IntVar] = {}
