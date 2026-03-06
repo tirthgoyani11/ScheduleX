@@ -792,10 +792,11 @@ function ProxyForm({
 
   const entry = timetable?.entries.find((e) => e.entry_id === entryId);
 
-  // Free faculty at the entry's slot
-  const { data: freeFac = [] } = scheduling.useFreeFaculty(
+  // Free faculty at the entry's slot, filtered by target date
+  const { data: freeFac = [], isLoading: freeFacLoading } = scheduling.useFreeFaculty(
     entry?.day || undefined,
-    entry?.period
+    entry?.period,
+    targetDate || undefined,
   );
 
   const handleSubmit = () => {
@@ -861,9 +862,13 @@ function ProxyForm({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
-            <Label>Proxy Faculty ({freeFac.length} available)</Label>
-            <Select value={proxyFacultyId} onValueChange={setProxyFacultyId}>
-              <SelectTrigger><SelectValue placeholder="Select proxy" /></SelectTrigger>
+            <Label>Date of Absence</Label>
+            <Input type="date" value={targetDate} onChange={(e) => { setTargetDate(e.target.value); setProxyFacultyId(""); }} />
+          </div>
+          <div className="space-y-2">
+            <Label>Proxy Faculty {targetDate && `(${freeFacLoading ? "checking..." : `${freeFac.filter((f) => entry ? f.name !== entry.faculty_name : true).length} free on ${new Date(targetDate + "T00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}`})`}</Label>
+            <Select value={proxyFacultyId} onValueChange={setProxyFacultyId} disabled={!targetDate || !entryId}>
+              <SelectTrigger><SelectValue placeholder={!targetDate ? "Select date first" : "Select proxy"} /></SelectTrigger>
               <SelectContent>
                 {freeFac
                   .filter((f) => entry ? f.name !== entry.faculty_name : true)
@@ -874,10 +879,6 @@ function ProxyForm({
                   ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Date of Absence</Label>
-            <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label>Reason (optional)</Label>

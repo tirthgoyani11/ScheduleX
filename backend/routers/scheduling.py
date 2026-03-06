@@ -416,15 +416,24 @@ async def get_free_faculty(
     timetable_id: str,
     day: str,
     period: int,
+    target_date: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Get all faculty free at a specific day+period within the user's department.
+    If target_date is provided, also excludes faculty with approved date-specific
+    bookings (reschedules, extra lectures, proxies) on that date+slot.
     """
     tt = await _get_published_timetable(timetable_id, current_user, db)
     booked_fac = await _get_booked_faculty_slots(current_user.college_id, db)
     extra_fac, _ = await _get_approved_booking_slots(current_user.college_id, db)
+
+    # Date-specific bookings
+    date_fac_set: set = set()
+    if target_date:
+        date_fac_map, _ = await _get_date_booking_details(current_user.college_id, target_date, db)
+        date_fac_set = set(date_fac_map.keys())
 
     dept_id = current_user.dept_id or tt.dept_id
     result = await db.execute(
@@ -443,7 +452,7 @@ async def get_free_faculty(
     free: list[FreeFacultyResponse] = []
     for f in all_faculty:
         key = (day, period, f.faculty_id)
-        if key not in booked_fac and key not in extra_fac:
+        if key not in booked_fac and key not in extra_fac and key not in date_fac_set:
             free.append(FreeFacultyResponse(
                 faculty_id=f.faculty_id, name=f.name,
                 expertise=f.expertise or [],

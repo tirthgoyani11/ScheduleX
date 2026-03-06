@@ -51,12 +51,15 @@ export function useScheduling(timetableId?: string) {
     });
   }
 
-  // ── Free Faculty at a day+period ──
-  function useFreeFaculty(day: string | undefined, period: number | undefined) {
+  // ── Free Faculty at a day+period (optionally date-aware) ──
+  function useFreeFaculty(day: string | undefined, period: number | undefined, targetDate?: string) {
     return useQuery<FreeFaculty[]>({
-      queryKey: ["free-faculty", timetableId, day, period],
-      queryFn: () =>
-        api.get(`/scheduling/free-faculty/${timetableId}`, { day: day!, period: period! }),
+      queryKey: ["free-faculty", timetableId, day, period, targetDate],
+      queryFn: () => {
+        const params: Record<string, string | number> = { day: day!, period: period! };
+        if (targetDate) params.target_date = targetDate;
+        return api.get(`/scheduling/free-faculty/${timetableId}`, params);
+      },
       enabled: !!timetableId && !!day && period != null,
     });
   }
