@@ -7,7 +7,7 @@ from dependencies import get_db, get_current_user
 from models.user import User, UserRole
 from schemas.auth import (
     LoginRequest, TokenResponse, RefreshRequest, RefreshResponse,
-    RegisterRequest, UserResponse,
+    RegisterRequest, UserResponse, UserUpdateRequest,
 )
 from utils.security import (
     hash_password, verify_password,
@@ -221,3 +221,99 @@ async def register_user(
 async def get_me(current_user: User = Depends(get_current_user)):
     """Get current authenticated user profile."""
     return UserResponse.model_validate(current_user)
+
+
+@router.get("/users", response_model=list[UserResponse])
+async def list_users(
+    role: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List users in the same college.
+    Super admin: sees all users in the college.
+    Dept admin: sees faculty users in own department.
+    """
+    if current_user.role == UserRole.SUPER_ADMIN:
+        query = select(User).where(
+            User.college_id == current_user.college_id,
+            User.is_active == True,
+        )
+        if role:
+            query = query.where(User.role == UserRole(role))
+    elif current_user.role == UserRole.DEPT_ADMIN:
+        query = select(User).where(
+            User.dept_id == current_user.dept_id,
+            User.role == UserRole.FACULTY,
+            User.is_active == True,
+        )
+    else:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    result = await db.execute(query.order_by(User.created_at.desc()))
+    users = result.scalars().all()
+    return [UserResponse.model_validate(u) for u in users]
+
+
+@router.put("/users/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: str,
+    request: UserUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a user. Super admin only."""
+    if current_user.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Only super admin can update users")
+
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.college_id != current_user.college_id:
+        raise HTTPException(status_code=403, detail="Cannot modify users from other colleges")
+
+    if request.full_name is not None:
+        target.full_name = request.full_name
+    if request.email is not None:
+        existing = await db.execute(
+            select(User).where(User.email == request.email, User.user_id != user_id)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Email already in use")
+        target.email = request.email
+    if request.role is not None:
+        try:
+            target.role = UserRole(request.role)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid role: {request.role}")
+    if request.is_active is not None:
+        target.is_active = request.is_active
+
+    db.add(target)
+    await db.commit()
+    await db.refresh(target)
+    return UserResponse.model_validate(target)
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-delete a user. Super admin only."""
+    if current_user.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Only super admin can delete users")
+    if user_id == current_user.user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.college_id != current_user.college_id:
+        raise HTTPException(status_code=403, detail="Cannot delete users from other colleges")
+
+    target.is_active = False
+    db.add(target)
+    await db.commit()
+    return {"message": "User deactivated successfully"}

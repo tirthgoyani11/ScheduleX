@@ -3,43 +3,53 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Settings2, CalendarDays, Download, Building2, Sparkles,
   ChevronLeft, ChevronRight, ChevronDown, Clock, BookOpen, Users, DoorOpen,
-  Zap, Eye, AlertTriangle, LogOut,
+  Zap, Eye, AlertTriangle, LogOut, Shield, UserCog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import { StatusChip } from "@/components/common/StatusChip";
+import type { UserRole } from "@/types";
 
 interface NavItem {
   label: string;
   path: string;
   icon: React.ElementType;
-  children?: { label: string; path: string; icon: React.ElementType }[];
+  roles?: UserRole[];
+  children?: { label: string; path: string; icon: React.ElementType; roles?: UserRole[] }[];
 }
 
 const navItems: NavItem[] = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   {
-    label: "Setup", path: "/setup", icon: Settings2,
+    label: "Admin", path: "/admin", icon: Shield,
+    roles: ["super_admin"],
     children: [
-      { label: "Time Slots", path: "/setup/time-slots", icon: Clock },
-      { label: "Subjects", path: "/setup/subjects", icon: BookOpen },
-      { label: "Faculty", path: "/setup/faculty", icon: Users },
-      { label: "Rooms", path: "/setup/rooms", icon: DoorOpen },
+      { label: "User Management", path: "/admin/users", icon: UserCog, roles: ["super_admin"] },
+    ],
+  },
+  {
+    label: "Setup", path: "/setup", icon: Settings2,
+    roles: ["super_admin", "dept_admin"],
+    children: [
+      { label: "Time Slots", path: "/setup/time-slots", icon: Clock, roles: ["super_admin", "dept_admin"] },
+      { label: "Subjects", path: "/setup/subjects", icon: BookOpen, roles: ["super_admin", "dept_admin"] },
+      { label: "Faculty", path: "/setup/faculty", icon: Users, roles: ["super_admin", "dept_admin"] },
+      { label: "Rooms", path: "/setup/rooms", icon: DoorOpen, roles: ["super_admin", "dept_admin"] },
     ],
   },
   {
     label: "Timetable", path: "/timetable", icon: CalendarDays,
     children: [
-      { label: "Generate", path: "/timetable/generate", icon: Zap },
+      { label: "Generate", path: "/timetable/generate", icon: Zap, roles: ["super_admin", "dept_admin"] },
       { label: "View", path: "/timetable/list", icon: Eye },
-      { label: "Conflicts", path: "/timetable/conflicts", icon: AlertTriangle },
+      { label: "Conflicts", path: "/timetable/conflicts", icon: AlertTriangle, roles: ["super_admin", "dept_admin"] },
     ],
   },
   { label: "Export", path: "/export", icon: Download },
 ];
 
 const settingsItems: NavItem[] = [
-  { label: "School Settings", path: "/settings", icon: Building2 },
+  { label: "School Settings", path: "/settings", icon: Building2, roles: ["super_admin"] },
   { label: "What's New", path: "/whats-new", icon: Sparkles },
 ];
 
@@ -50,7 +60,7 @@ export function AppSidebar({ onCollapseChange }: { onCollapseChange?: (collapsed
     setCollapsed(val);
     onCollapseChange?.(val);
   };
-  const [expandedGroups, setExpandedGroups] = useState<string[]>(["Setup", "Timetable"]);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(["Setup", "Timetable", "Admin"]);
   const location = useLocation();
 
   const toggleGroup = (label: string) => {
@@ -70,6 +80,17 @@ export function AppSidebar({ onCollapseChange }: { onCollapseChange?: (collapsed
     logout();
     navigate("/login");
   };
+
+  const hasRole = (roles?: UserRole[]) => !roles || !user?.role || roles.includes(user.role as UserRole);
+
+  const filteredNavItems = navItems
+    .filter((item) => hasRole(item.roles))
+    .map((item) => ({
+      ...item,
+      children: item.children?.filter((child) => hasRole(child.roles)),
+    }));
+
+  const filteredSettingsItems = settingsItems.filter((item) => hasRole(item.roles));
 
   return (
     <aside
@@ -102,7 +123,7 @@ export function AppSidebar({ onCollapseChange }: { onCollapseChange?: (collapsed
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground px-3 mb-2">Main Menu</p>
         )}
         <ul className="space-y-0.5">
-          {navItems.map((item) => (
+          {filteredNavItems.map((item) => (
             <li key={item.label}>
               {item.children ? (
                 <>
@@ -160,11 +181,11 @@ export function AppSidebar({ onCollapseChange }: { onCollapseChange?: (collapsed
           ))}
         </ul>
 
-        {!collapsed && (
+        {!collapsed && filteredSettingsItems.length > 0 && (
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground px-3 mt-6 mb-2">Settings</p>
         )}
         <ul className="space-y-0.5">
-          {settingsItems.map((item) => (
+          {filteredSettingsItems.map((item) => (
             <li key={item.label}>
               <Link
                 to={item.path}
@@ -189,7 +210,12 @@ export function AppSidebar({ onCollapseChange }: { onCollapseChange?: (collapsed
           {!collapsed && (
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate">{user?.full_name || "User"}</p>
-              <StatusChip variant="draft" label={user?.role || "user"} />
+              <StatusChip variant="draft" label={
+                user?.role === "super_admin" ? "Super Admin" :
+                user?.role === "dept_admin" ? "HOD" :
+                user?.role === "faculty" ? "Faculty" :
+                user?.role || "user"
+              } />
             </div>
           )}
           <button onClick={handleLogout} className="p-1.5 rounded-lg hover:bg-accent transition-colors shrink-0" title="Logout">

@@ -7,6 +7,9 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import LoginPage from "@/pages/Login";
 import RegisterPage from "@/pages/Register";
 import DashboardPage from "@/pages/Dashboard";
+import HodDashboard from "@/pages/dashboards/HodDashboard";
+import FacultyDashboard from "@/pages/dashboards/FacultyDashboard";
+import UserManagementPage from "@/pages/admin/UserManagement";
 import TimeSlotsPage from "@/pages/setup/TimeSlots";
 import SubjectsPage from "@/pages/setup/Subjects";
 import FacultyPage from "@/pages/setup/Faculty";
@@ -19,6 +22,8 @@ import ExportPage from "@/pages/Export";
 import SettingsPage from "@/pages/Settings";
 import WhatsNewPage from "@/pages/WhatsNew";
 import NotFound from "@/pages/NotFound";
+import { RoleDashboard } from "@/components/layout/RoleDashboard";
+import { RoleGuard } from "@/components/layout/RoleGuard";
 
 const queryClient = new QueryClient();
 
@@ -35,18 +40,21 @@ const App = () => (
 
           {/* Dashboard routes */}
           <Route element={<DashboardLayout />}>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/setup/time-slots" element={<TimeSlotsPage />} />
-            <Route path="/setup/subjects" element={<SubjectsPage />} />
-            <Route path="/setup/faculty" element={<FacultyPage />} />
-            <Route path="/setup/rooms" element={<RoomsPage />} />
-            <Route path="/timetable/generate" element={<GeneratePage />} />
+            <Route path="/" element={<RoleDashboard />} />
+            <Route path="/dashboard/hod" element={<RoleGuard roles={["dept_admin"]}><HodDashboard /></RoleGuard>} />
+            <Route path="/dashboard/faculty" element={<RoleGuard roles={["faculty"]}><FacultyDashboard /></RoleGuard>} />
+            <Route path="/admin/users" element={<RoleGuard roles={["super_admin"]}><UserManagementPage /></RoleGuard>} />
+            <Route path="/setup/time-slots" element={<RoleGuard roles={["super_admin", "dept_admin"]}><TimeSlotsPage /></RoleGuard>} />
+            <Route path="/setup/subjects" element={<RoleGuard roles={["super_admin", "dept_admin"]}><SubjectsPage /></RoleGuard>} />
+            <Route path="/setup/faculty" element={<RoleGuard roles={["super_admin", "dept_admin"]}><FacultyPage /></RoleGuard>} />
+            <Route path="/setup/rooms" element={<RoleGuard roles={["super_admin", "dept_admin"]}><RoomsPage /></RoleGuard>} />
+            <Route path="/timetable/generate" element={<RoleGuard roles={["super_admin", "dept_admin"]}><GeneratePage /></RoleGuard>} />
             <Route path="/timetable/list" element={<TimetableListPage />} />
             <Route path="/timetable/view/:id" element={<TimetableViewPage />} />
-            <Route path="/timetable/conflicts/:id" element={<ConflictsPage />} />
-            <Route path="/timetable/conflicts" element={<ConflictsPage />} />
+            <Route path="/timetable/conflicts/:id" element={<RoleGuard roles={["super_admin", "dept_admin"]}><ConflictsPage /></RoleGuard>} />
+            <Route path="/timetable/conflicts" element={<RoleGuard roles={["super_admin", "dept_admin"]}><ConflictsPage /></RoleGuard>} />
             <Route path="/export" element={<ExportPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings" element={<RoleGuard roles={["super_admin"]}><SettingsPage /></RoleGuard>} />
             <Route path="/whats-new" element={<WhatsNewPage />} />
           </Route>
 

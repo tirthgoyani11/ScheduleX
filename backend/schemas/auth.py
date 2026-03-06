@@ -49,3 +49,10 @@ class UserResponse(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class UserUpdateRequest(BaseModel):
+    full_name: str | None = None
+    email: str | None = None
+    role: str | None = None
+    is_active: bool | None = None
