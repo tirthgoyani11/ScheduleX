@@ -349,7 +349,7 @@ async def ai_suggest_assignments(
         subject_info.append(
             f"- {s.name} (ID: {s.subject_id[:8]}): "
             f"theory={lh}h/week, lab={s.lab_hours}h/week, "
-            f"category={s.category or 'general'}, batch_size={s.batch_size}"
+            f"needs_lab={'yes' if s.needs_lab else 'no'}, batch_size={s.batch_size}"
         )
 
     prompt = (

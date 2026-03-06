@@ -181,7 +181,7 @@ async def handle_generate(
             "data": {"needs_semester": True},
         }
 
-    # Step 1: Auto-assign faculty to subjects
+    # Step 1: Auto-assign faculty to subjects (inline logic)
     from models.faculty import Faculty as FacultyModel
     from models.subject import Subject as SubjectModel
     from models.batch import Batch
@@ -211,15 +211,76 @@ async def handle_generate(
             "data": None,
         }
 
-    # Run auto-assign (same logic as the router endpoint)
-    from routers.timetable import auto_assign_faculty
+    # Build auto-assignment map {faculty_id: [subject_ids]}
+    batch_result = await db.execute(
+        select(Batch).where(Batch.dept_id == dept_id, Batch.semester == semester)
+    )
+    num_batches = len(batch_result.scalars().all()) or 1
 
-    # Build a mock user object for auto-assign
-    class _MockUser:
-        def __init__(self, d):
-            self.dept_id = d
-    mock_user = _MockUser(dept_id)
-    faculty_subject_map = await auto_assign_faculty(semester, mock_user, db)
+    subject_keywords: dict[str, list[str]] = {}
+    for sub in subject_list:
+        subject_keywords[sub.subject_id] = [
+            w.lower() for w in sub.name.split() if len(w) > 2
+        ]
+
+    abbreviation_map = {
+        "cn": ["computer networks", "computer network"],
+        "os": ["operating systems", "operating system"],
+        "dbms": ["database management", "database"],
+        "se": ["software engineering"],
+        "daa": ["design & analysis of algorithms", "design and analysis", "algorithms"],
+        "toc": ["theory of computation"],
+        "wp": ["web programming", "web development"],
+        "ds": ["data structures", "data structure"],
+        "ai": ["artificial intelligence"],
+        "ml": ["machine learning"],
+        "cd": ["compiler design"],
+        "coa": ["computer organization", "computer architecture"],
+    }
+
+    load_tracker: dict[str, int] = {f.faculty_id: 0 for f in faculty_list}
+    sid_to_fid: dict[str, str] = {}
+
+    def _match_score(fac, sub):
+        expertise = [e.lower().strip() for e in (fac.expertise or [])]
+        name_lower = sub.name.lower()
+        sc = 0
+        for exp in expertise:
+            if exp in abbreviation_map:
+                for phrase in abbreviation_map[exp]:
+                    if phrase in name_lower:
+                        sc = max(sc, 100)
+                        break
+            elif exp in name_lower:
+                sc = max(sc, 80)
+            elif any(kw in exp for kw in subject_keywords.get(sub.subject_id, [])):
+                sc = max(sc, 60)
+        return sc
+
+    def _sub_load(s):
+        lh = s.lecture_hours if s.lecture_hours else s.weekly_periods
+        return lh + s.lab_hours * num_batches
+
+    for sub in sorted(subject_list, key=_sub_load, reverse=True):
+        candidates = []
+        for fac in faculty_list:
+            sc = _match_score(fac, sub)
+            if sc > 0:
+                candidates.append((sc - load_tracker[fac.faculty_id] * 5, fac))
+        if candidates:
+            candidates.sort(key=lambda x: (-x[0], load_tracker[x[1].faculty_id]))
+            best = candidates[0][1]
+            sid_to_fid[sub.subject_id] = best.faculty_id
+            load_tracker[best.faculty_id] += _sub_load(sub)
+        elif faculty_list:
+            least = min(faculty_list, key=lambda f: load_tracker[f.faculty_id])
+            sid_to_fid[sub.subject_id] = least.faculty_id
+            load_tracker[least.faculty_id] += _sub_load(sub)
+
+    # Convert to {faculty_id: [subject_ids]}
+    faculty_subject_map: dict[str, list[str]] = {}
+    for sid, fid in sid_to_fid.items():
+        faculty_subject_map.setdefault(fid, []).append(sid)
 
     # Step 2: AI pre-generation analysis
     pre_analysis = await pre_generation_analysis(
