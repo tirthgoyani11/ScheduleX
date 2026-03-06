@@ -38,6 +38,7 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
     by_lab_subject_faculty_batch = variables["by_lab_subject_faculty_batch"]
     by_lab_batch_slot = variables["by_lab_batch_slot"]
     by_lab_subject_slot = variables["by_lab_subject_slot"]
+    by_lab_sfb_day_period = variables.get("by_lab_sfb_day_period", {})
 
     lecture_periods = variables["lecture_periods"]
     lab_periods = variables["lab_periods"]
@@ -137,6 +138,70 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
         if len(svars) > 1:
             model.AddAtMostOne(svars)
             constraint_count += 1
+
+    # ── HC_contig: Lab sessions must be consecutive periods on the same day ──
+    # For each (subject, faculty, batch) with lab_hours >= 2, exactly one
+    # "block start" must be chosen.  A block start at (day, p) means the lab
+    # occupies consecutive slot_orders p, p+1, …, p+lab_hours-1 (no break gap).
+    slot_lookup = data.get("slot_lookup", {})
+    sorted_lab = sorted(lab_periods)
+    for subject in data["subjects"]:
+        lh = subject.lab_hours
+        if lh < 2:
+            continue
+        for fid in faculty_subject_map.get(subject.subject_id, []):
+            for batch in batches:
+                sid = subject.subject_id
+                bid = batch.batch_id
+                entries = by_lab_subject_faculty_batch.get((sid, fid, bid), [])
+                if not entries:
+                    continue
+
+                start_vars = []
+                for day in days:
+                    for i in range(len(sorted_lab)):
+                        # Build a block of lh consecutive slot_orders
+                        block = []
+                        valid = True
+                        for offset in range(lh):
+                            idx = i + offset
+                            if idx >= len(sorted_lab):
+                                valid = False
+                                break
+                            p = sorted_lab[idx]
+                            # Consecutive means slot_order differs by exactly 1
+                            if offset > 0 and p != sorted_lab[idx - 1] + 1:
+                                valid = False
+                                break
+                            block.append(p)
+                        if not valid:
+                            continue
+
+                        # Every period in block must have vars for this (sid,fid,bid,day)
+                        block_period_vars = []
+                        all_have_vars = True
+                        for p in block:
+                            pvars = by_lab_sfb_day_period.get((sid, fid, bid, day, p), [])
+                            if not pvars:
+                                all_have_vars = False
+                                break
+                            block_period_vars.append(pvars)
+                        if not all_have_vars:
+                            continue
+
+                        sv = model.NewBoolVar(
+                            f"lbs_{sid[:6]}_{fid[:6]}_{bid[:6]}_{day[:3]}_{block[0]}"
+                        )
+                        start_vars.append(sv)
+
+                        # If this block is chosen, exactly 1 var active at each period
+                        for pvars in block_period_vars:
+                            model.Add(sum(pvars) == 1).OnlyEnforceIf(sv)
+                        constraint_count += len(block_period_vars)
+
+                if start_vars:
+                    model.AddExactlyOne(start_vars)
+                    constraint_count += 1
 
     # ── HC9: No more than 3 consecutive periods (theory + lab) ────────────────
     sorted_periods = sorted(periods)
