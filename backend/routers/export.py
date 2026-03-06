@@ -310,34 +310,19 @@ async def export_department_pdf(
 
 
 # ── Faculty PDF ───────────────────────────────────────────
-@router.get("/faculty/{timetable_id}")
-async def export_faculty_pdf(
-    timetable_id: str,
-    faculty_name: str = Query(..., description="Faculty member's full name"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    tt, all_entries, slots, _, _ = await _load_timetable_data(
-        timetable_id, current_user, db
-    )
 
+def _build_faculty_schedule(faculty_name: str, all_entries, slots, days):
+    """Build rows + teaching_summary for a single faculty member."""
     entries = [e for e in all_entries if e["faculty_name"] == faculty_name]
-    if not entries:
-        raise HTTPException(404, f"No entries found for faculty '{faculty_name}'")
 
-    days = _get_days(entries if entries else all_entries)
-
-    # Build single-entry lookup
     lookup = {}
     for e in entries:
         lookup[f"{e['day']}|{e['period']}"] = e
 
     blocks = _detect_blocks(slots, days, lookup, multi=False)
 
-    # Build rows for template
     rows = []
     for slot in slots:
-        # Check if entire row is skipped
         if slot.slot_type.value != "break":
             all_skip = all(
                 blocks.get(f"{d}|{slot.slot_order}", {}).get("type") == "skip"
@@ -350,7 +335,6 @@ async def export_faculty_pdf(
             if all_skip:
                 continue
 
-        # Determine time label (use merged block end time if applicable)
         time_label = f"{slot.start_time} – {slot.end_time}"
         if slot.slot_type.value != "break":
             for day in days:
@@ -387,7 +371,6 @@ async def export_faculty_pdf(
 
         rows.append({"time": time_label, "cells": cells})
 
-    # Teaching summary
     subject_map: dict[str, dict] = {}
     for e in entries:
         if e["subject_name"] not in subject_map:
@@ -408,22 +391,70 @@ async def export_faculty_pdf(
         for name, info in sorted(subject_map.items())
     ]
 
-    template = _jinja_env.get_template("faculty.html")
-    html_str = template.render(
-        faculty_name=faculty_name,
-        semester=tt.semester,
-        academic_year=tt.academic_year,
-        total_periods=len(entries),
-        subject_count=len(subject_map),
-        days=days,
-        rows=rows,
-        teaching_summary=teaching_summary,
+    return entries, rows, teaching_summary, subject_map
+
+
+@router.get("/faculty/{timetable_id}")
+async def export_faculty_pdf(
+    timetable_id: str,
+    faculty_name: str | None = Query(None, description="Faculty member's full name (omit for all faculty)"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    tt, all_entries, slots, _, _ = await _load_timetable_data(
+        timetable_id, current_user, db
     )
+    days = _get_days(all_entries)
+
+    if faculty_name:
+        # ── Single faculty ──
+        entries, rows, teaching_summary, subject_map = _build_faculty_schedule(
+            faculty_name, all_entries, slots, days
+        )
+        if not entries:
+            raise HTTPException(404, f"No entries found for faculty '{faculty_name}'")
+
+        template = _jinja_env.get_template("faculty.html")
+        html_str = template.render(
+            faculty_name=faculty_name,
+            semester=tt.semester,
+            academic_year=tt.academic_year,
+            total_periods=len(entries),
+            subject_count=len(subject_map),
+            days=days,
+            rows=rows,
+            teaching_summary=teaching_summary,
+        )
+        safe_name = faculty_name.replace(" ", "_")
+        filename = f"Schedule_{safe_name}.pdf"
+    else:
+        # ── All faculty ──
+        faculty_names = sorted({e["faculty_name"] for e in all_entries})
+        faculty_list = []
+        for fn in faculty_names:
+            entries, rows, teaching_summary, subject_map = _build_faculty_schedule(
+                fn, all_entries, slots, days
+            )
+            faculty_list.append({
+                "name": fn,
+                "rows": rows,
+                "total_periods": len(entries),
+                "subject_count": len(subject_map),
+                "teaching_summary": teaching_summary,
+            })
+
+        template = _jinja_env.get_template("faculty_all.html")
+        html_str = template.render(
+            semester=tt.semester,
+            academic_year=tt.academic_year,
+            faculty_count=len(faculty_names),
+            total_entries=len(all_entries),
+            days=days,
+            faculty_list=faculty_list,
+        )
+        filename = f"Faculty_Schedules_Sem{tt.semester}_{tt.academic_year}.pdf"
 
     pdf_bytes = _render_pdf(html_str)
-
-    safe_name = faculty_name.replace(" ", "_")
-    filename = f"Schedule_{safe_name}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

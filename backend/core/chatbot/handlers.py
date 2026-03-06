@@ -358,7 +358,11 @@ async def handle_generate(
         )
 
     # Step 2b: Proactive infrastructure fix — ensure labs/rooms can fit subjects
-    lab_fixed = await _fix_all_lab_capacities(db, college_id, subject_list, auto_fixes)
+    batch_list_check = (await db.execute(
+        select(Batch).where(Batch.dept_id == dept_id, Batch.semester == semester)
+    )).scalars().all()
+    actual_batch_size = max((b.size for b in batch_list_check), default=20)
+    lab_fixed = await _fix_all_lab_capacities(db, college_id, subject_list, auto_fixes, actual_batch_size)
     room_fixed = await _fix_all_room_capacities(db, college_id, subject_list, auto_fixes)
     if lab_fixed or room_fixed:
         # Refresh subject list after DB changes
@@ -752,8 +756,9 @@ async def _fix_all_lab_capacities(
     college_id: str,
     subject_list: list,
     auto_fixes: list[str],
+    batch_size: int = 20,
 ) -> bool:
-    """Scan ALL lab subjects and ensure at least one matching lab can fit them."""
+    """Scan ALL lab subjects and ensure at least one matching lab can fit a batch."""
     from models.room import Room as RoomModel, RoomType
     from core.scheduler.variables import _infer_subject_lab_needs, _infer_lab_category
 
@@ -777,30 +782,29 @@ async def _fix_all_lab_capacities(
             lab for lab in all_labs
             if lab_categories.get(lab.room_id) in needed_cats
         ]
-        valid_labs = [lab for lab in matching_labs if lab.capacity >= sub.batch_size]
+        # Labs only need to seat individual batches, not the whole division
+        valid_labs = [lab for lab in matching_labs if lab.capacity >= batch_size]
 
         if valid_labs:
             continue  # This subject is fine
 
         if matching_labs:
-            # Upgrade the biggest matching lab
             biggest = max(matching_labs, key=lambda r: r.capacity)
             old_cap = biggest.capacity
-            biggest.capacity = sub.batch_size
+            biggest.capacity = batch_size
             db.add(biggest)
             auto_fixes.append(
-                f"Upgraded '{biggest.name}' capacity: {old_cap} → {sub.batch_size} "
+                f"Upgraded '{biggest.name}' capacity: {old_cap} → {batch_size} "
                 f"(needed for '{sub.name}')"
             )
             fixed = True
         else:
-            # Create a new lab
             lab_name = f"{sub.name} Lab"
             new_lab = RoomModel(
                 room_id=str(uuid.uuid4()),
                 college_id=college_id,
                 name=lab_name,
-                capacity=sub.batch_size,
+                capacity=batch_size,
                 room_type=RoomType.LAB,
                 has_projector=True, has_computers=True, has_ac=True,
             )
@@ -808,7 +812,7 @@ async def _fix_all_lab_capacities(
             all_labs.append(new_lab)
             lab_categories[new_lab.room_id] = _infer_lab_category(lab_name)
             auto_fixes.append(
-                f"Created new lab '{lab_name}' with {sub.batch_size} seats"
+                f"Created new lab '{lab_name}' with {batch_size} seats"
             )
             fixed = True
 

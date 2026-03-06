@@ -80,23 +80,26 @@ def _check_no_valid_lab(data: dict) -> dict | None:
     """Check if lab subjects have at least one lab room with sufficient capacity."""
     lab_subjects = [s for s in data["subjects"] if s.needs_lab]
     lab_rooms = [r for r in data["rooms"] if r.room_type.value == "lab"]
+    batches = data.get("batches", [])
+    # Labs seat individual batches, not the whole division
+    max_batch_size = max((b.size for b in batches), default=20)
 
     for subject in lab_subjects:
-        valid_labs = [r for r in lab_rooms if r.capacity >= subject.batch_size]
+        valid_labs = [r for r in lab_rooms if r.capacity >= max_batch_size]
         if not valid_labs:
             return {
                 "type": "NO_VALID_LAB",
                 "message": (
                     f"Subject '{subject.name}' requires a lab room for "
-                    f"{subject.batch_size} students, but no lab with sufficient capacity exists."
+                    f"{max_batch_size} students (per batch), but no lab with sufficient capacity exists."
                 ),
                 "affected_subject": subject.name,
-                "required_capacity": subject.batch_size,
+                "required_capacity": max_batch_size,
                 "available_labs": [
                     {"name": r.name, "capacity": r.capacity} for r in lab_rooms
                 ],
                 "suggestions": [
-                    f"Add a lab room with capacity >= {subject.batch_size} to the college resources",
+                    f"Add a lab room with capacity >= {max_batch_size} to the college resources",
                     f"Split the '{subject.name}' batch into two smaller groups",
                     "Contact the college admin to register a larger lab room",
                 ],
@@ -147,22 +150,34 @@ def _check_general_block_conflict(data: dict) -> dict | None:
 
 
 def _check_room_capacity(data: dict) -> dict | None:
-    """Check if every subject has at least one room that can accommodate its batch."""
+    """Check if every subject has at least one room that can accommodate its students."""
+    batches = data.get("batches", [])
+    max_batch_size = max((b.size for b in batches), default=20)
+
     for subject in data["subjects"]:
-        valid_rooms = [
-            r for r in data["rooms"]
-            if r.capacity >= subject.batch_size
-            and (not subject.needs_lab or r.room_type.value == "lab")
-        ]
+        if subject.needs_lab:
+            # Labs seat individual batches
+            required = max_batch_size
+            valid_rooms = [
+                r for r in data["rooms"]
+                if r.room_type.value == "lab" and r.capacity >= required
+            ]
+        else:
+            # Classrooms seat the full division
+            required = subject.batch_size
+            valid_rooms = [
+                r for r in data["rooms"]
+                if r.room_type.value == "classroom" and r.capacity >= required
+            ]
         if not valid_rooms:
             return {
                 "type": "ROOM_CAPACITY_EXCEEDED",
                 "message": (
-                    f"No room can accommodate the {subject.batch_size} students "
+                    f"No room can accommodate the {required} students "
                     f"in '{subject.name}'."
                 ),
                 "affected_subject": subject.name,
-                "required_capacity": subject.batch_size,
+                "required_capacity": required,
                 "largest_available": max(
                     (r.capacity for r in data["rooms"]), default=0
                 ),

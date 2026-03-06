@@ -6,7 +6,7 @@ Combined (theory + lab):
   HC1:  No faculty double-booking at any (day, period)
   HC2:  No room double-booking at any (day, period)
   HC4:  Faculty weekly load cap
-  HC9:  No more than 3 consecutive periods for same faculty
+  HC9:  No more than 4 consecutive periods for same faculty
   HC_theory_lab: Theory and labs cannot share the same (day, period)
 
 Theory-specific:
@@ -19,7 +19,6 @@ Lab-specific:
   HC7l:    Each (subject, batch) gets exactly lab_hours lab slots (any faculty)
   HC8l:    Each batch has at most 1 lab at any (day, lab_period)
   HCsync:  All batches must have labs at the SAME (day, period) — synchronisation
-  HCrot:   At most 1 batch per subject at any (day, lab_period) — rotation
 """
 from ortools.sat.python import cp_model
 import structlog
@@ -137,12 +136,6 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
                     model.Add(use_lab == 0)
                     constraint_count += 1
 
-    # ── HCrot: Different subjects per batch at each lab slot ──────────────────
-    for (sid, day, period), svars in by_lab_subject_slot.items():
-        if len(svars) > 1:
-            model.AddAtMostOne(svars)
-            constraint_count += 1
-
     # ── HC_contig: Lab sessions must be consecutive periods, SAME room ──────
     # For each (subject, faculty, batch) with lab_hours >= 2, exactly one
     # "block" is chosen: a (day, starting_period, room) tuple.  The block
@@ -253,7 +246,8 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
                 model.Add(sum(lab_at_slot) == 0).OnlyEnforceIf(has_theory)
                 constraint_count += 1
 
-    # ── HC9: No more than 3 consecutive periods (theory + lab) ────────────────
+    # ── HC9: No more than 4 consecutive periods (theory + lab) ────────────────
+    # Allows 4-period lab blocks (e.g. Project-I) while preventing 5+ straight.
     sorted_periods = sorted(periods)
     for faculty in data["faculty"]:
         fid = faculty.faculty_id
@@ -264,13 +258,13 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
             period_vars: dict[int, list] = {}
             for p, var in day_entries:
                 period_vars.setdefault(p, []).append(var)
-            for i in range(len(sorted_periods) - 3):
-                window = sorted_periods[i : i + 4]
+            for i in range(len(sorted_periods) - 4):
+                window = sorted_periods[i : i + 5]
                 wvars = []
                 for p in window:
                     wvars.extend(period_vars.get(p, []))
-                if len(wvars) > 3:
-                    model.Add(sum(wvars) <= 3)
+                if len(wvars) > 4:
+                    model.Add(sum(wvars) <= 4)
                     constraint_count += 1
 
     # ── HC10: 3-credit theory subjects must span ≥2 days ──────────────────────
