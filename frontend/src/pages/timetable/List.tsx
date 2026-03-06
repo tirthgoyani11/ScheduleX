@@ -50,7 +50,7 @@ export default function TimetableListPage() {
                     <Eye className="h-3.5 w-3.5" />View
                   </Button>
                 </Link>
-                {tt.status === "DRAFT" && (
+                {tt.status.toUpperCase() === "DRAFT" && (
                   <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={() => publish(tt.timetable_id)}>
                     <Send className="h-3.5 w-3.5" />Publish
                   </Button>

@@ -53,7 +53,7 @@ import models  # noqa: F401
 # ── Include Routers ────────────────────────────────────────────
 from routers import auth, college, department, faculty, subject, room
 from routers import timetable, substitution, notification, exam, nlq, analytics
-from routers import websocket, webhook, timeslot, batch
+from routers import websocket, webhook, timeslot, batch, scheduling
 
 app.include_router(auth.router)
 app.include_router(college.router)
@@ -71,6 +71,7 @@ app.include_router(nlq.router)
 app.include_router(analytics.router)
 app.include_router(websocket.router)
 app.include_router(webhook.router)
+app.include_router(scheduling.router)
 
 
 # ── Health Check ───────────────────────────────────────────────

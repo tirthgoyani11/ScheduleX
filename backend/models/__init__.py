@@ -12,6 +12,7 @@ from models.exam import ExamTimetable, ExamEntry, InvigilatorAssignment, Student
 from models.audit import AuditLog
 from models.timeslot import TimeSlotConfig, SlotType
 from models.batch import Batch
+from models.slot_booking import SlotBooking, BookingType, BookingStatus
 
 __all__ = [
     "College", "Department",
@@ -27,4 +28,5 @@ __all__ = [
     "AuditLog",
     "TimeSlotConfig", "SlotType",
     "Batch",
+    "SlotBooking", "BookingType", "BookingStatus",
 ]

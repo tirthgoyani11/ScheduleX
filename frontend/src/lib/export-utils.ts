@@ -209,43 +209,18 @@ export function exportDepartmentPDF(
   // Detect merged lab blocks
   const labBlocks = detectLabBlocks(slots, days, lookup);
 
-  // Build body rows
+  // Build body rows — lab "start" cells use rowSpan to merge vertically
   const bodyRows: any[][] = [];
   for (const slot of slots) {
     const row: any[] = [];
 
-    // Check if entire row is skipped (all day cells are either "skip" or have no entries)
-    const allSkipped = slot.slot_type !== "break" && days.every((d) => {
-      const info = labBlocks.get(`${d}|${slot.slot_order}`);
-      if (info?.type === "skip") return true;
-      if (info?.type === "start") return false;
-      // No block info — skip if no entries exist for this slot
-      return (lookup.get(`${d}|${slot.slot_order}`) || []).length === 0;
-    });
-
-    // Time cell — compute merged time range if this starts a lab block
-    let timeLabel = `${slot.start_time} to ${slot.end_time}\n${slot.label}`;
-    // If any day has a lab block starting here, show merged time range
-    if (slot.slot_type !== "break") {
-      for (const day of days) {
-        const info = labBlocks.get(`${day}|${slot.slot_order}`);
-        if (info?.type === "start") {
-          timeLabel = `${slot.start_time} to ${info.endTime}\n${slot.label} (${info.span}h)`;
-          break;
-        }
-      }
-    }
-
-    // If this is a continuation row for ALL days, skip it entirely
-    if (allSkipped) continue;
-
+    // Time cell — always shows this slot's own time
     row.push({
-      content: timeLabel,
+      content: `${slot.start_time} to ${slot.end_time}\n${slot.label}`,
       styles: { fontStyle: "bold", fontSize: 5, halign: "center", valign: "middle" },
     });
 
     if (slot.slot_type === "break") {
-      // Break row — single cell spanning all columns
       row.push({
         content: slot.label.toUpperCase(),
         colSpan: days.length * (hasBatches ? numBatches : 1),
@@ -263,38 +238,32 @@ export function exportDepartmentPDF(
     for (const day of days) {
       const blockInfo = labBlocks.get(`${day}|${slot.slot_order}`);
 
-      // If this day/slot is a "skip" (continuation of block), show empty merged cell
+      // Continuation cell — covered by rowSpan from the start row above
       if (blockInfo?.type === "skip") {
-        if (hasBatches && isLabSlot) {
-          for (const _bn of batchNames) {
-            row.push({ content: "", styles: { halign: "center", valign: "middle" } });
-          }
-        } else if (hasBatches) {
-          row.push({ content: "", colSpan: numBatches, styles: { halign: "center", valign: "middle" } });
-        } else {
-          row.push({ content: "", styles: { halign: "center", valign: "middle" } });
-        }
-        continue;
+        continue; // autotable handles spanned columns automatically
       }
 
       const cellEntries = lookup.get(`${day}|${slot.slot_order}`) || [];
 
       if (hasBatches && isLabSlot) {
-        // Lab period — one sub-cell per batch
         for (const bn of batchNames) {
           const entry = cellEntries.find((e) => e.batch === bn);
+          const cellData: any = {
+            styles: { fontSize: 4.5, halign: "center", valign: "middle", cellPadding: 0.5 },
+          };
+          if (blockInfo?.type === "start") {
+            cellData.rowSpan = blockInfo.span;
+          }
           if (entry) {
             const hours = blockInfo?.type === "start" ? ` (${blockInfo.span}h)` : "";
-            row.push({
-              content: `${entry.subject_name}\n${facultyAbbr(entry.faculty_name)}\n${entry.room_name}${hours}`,
-              styles: { fontSize: 4.5, halign: "center", valign: "middle", cellPadding: 0.5 },
-            });
+            cellData.content = `${entry.subject_name}\n${facultyAbbr(entry.faculty_name)}\n${entry.room_name}${hours}`;
           } else {
-            row.push({ content: "—", styles: { halign: "center", valign: "middle", textColor: [180, 180, 180] } });
+            cellData.content = "—";
+            cellData.styles.textColor = [180, 180, 180];
           }
+          row.push(cellData);
         }
       } else if (hasBatches) {
-        // Theory period — merge across all batch columns
         if (cellEntries.length > 0) {
           const e = cellEntries[0];
           row.push({
@@ -310,7 +279,6 @@ export function exportDepartmentPDF(
           });
         }
       } else {
-        // No batches at all
         if (cellEntries.length > 0) {
           const e = cellEntries[0];
           row.push({
@@ -466,89 +434,74 @@ export function exportExcelWorkbook(tt: Timetable, slots: TimeSlot[]) {
   const gridData: string[][] = [headerRow1];
   if (hasBatches) gridData.push(headerRow2);
 
-  // Track row indices for merging
-  const xlMergeRows: XLSX.Range[] = [];
+  // Track row indices for lab block merges
+  const xlLabMerges: XLSX.Range[] = [];
   const headerOffset = hasBatches ? 2 : 1;
+  let xlRowIdx = headerOffset;
 
   for (const slot of slots) {
-    // Skip continuation rows entirely
-    const allSkip = slot.slot_type !== "break" && days.every((d) => {
-      const info = xlLabBlocks.get(`${d}|${slot.slot_order}`);
-      if (info?.type === "skip") return true;
-      if (info?.type === "start") return false;
-      return (lookup.get(`${d}|${slot.slot_order}`) || []).length === 0;
-    });
-    if (allSkip) continue;
+    const row: string[] = [`${slot.start_time}-${slot.end_time} ${slot.label}`];
 
-    // Time label
-    let timeLabel = `${slot.start_time}-${slot.end_time} ${slot.label}`;
-    if (slot.slot_type !== "break") {
-      for (const day of days) {
-        const info = xlLabBlocks.get(`${day}|${slot.slot_order}`);
-        if (info?.type === "start") {
-          timeLabel = `${slot.start_time}-${info.endTime} ${slot.label} (${info.span}h)`;
-          break;
-        }
-      }
-    }
-
-    const row: string[] = [timeLabel];
     if (slot.slot_type === "break") {
       for (let i = 0; i < days.length * numBatches; i++) row.push(slot.label.toUpperCase());
       gridData.push(row);
+      xlRowIdx++;
       continue;
     }
+
     const isLabSlot = labPeriods.has(slot.slot_order);
+    let colIdx = 1;
 
     for (const day of days) {
       const blockInfo = xlLabBlocks.get(`${day}|${slot.slot_order}`);
       const cellEntries = lookup.get(`${day}|${slot.slot_order}`) || [];
 
-      if (blockInfo?.type === "skip") {
-        // Fill empty for skipped
-        if (hasBatches && isLabSlot) {
-          for (const _bn of batchNames) row.push("");
-        } else if (hasBatches) {
-          row.push("");
-          for (let i = 1; i < numBatches; i++) row.push("");
-        } else {
-          row.push("");
-        }
-        continue;
-      }
-
       if (hasBatches && isLabSlot) {
         for (const bn of batchNames) {
-          const entry = cellEntries.find((e) => e.batch === bn);
-          const hours = blockInfo?.type === "start" ? ` (${blockInfo.span}h)` : "";
-          row.push(entry ? `${entry.subject_name}\n${entry.faculty_name}\n${entry.room_name}${hours}` : "—");
+          if (blockInfo?.type === "start") {
+            const entry = cellEntries.find((e) => e.batch === bn);
+            const hours = ` (${blockInfo.span}h)`;
+            row.push(entry ? `${entry.subject_name}\n${entry.faculty_name}\n${entry.room_name}${hours}` : "—");
+            if (blockInfo.span > 1) {
+              xlLabMerges.push({ s: { r: xlRowIdx, c: colIdx }, e: { r: xlRowIdx + blockInfo.span - 1, c: colIdx } });
+            }
+          } else if (blockInfo?.type === "skip") {
+            row.push("");
+          } else {
+            const entry = cellEntries.find((e) => e.batch === bn);
+            row.push(entry ? `${entry.subject_name}\n${entry.faculty_name}\n${entry.room_name}` : "—");
+          }
+          colIdx++;
         }
       } else if (hasBatches) {
         const e = cellEntries[0];
         row.push(e ? `${e.subject_name}\n${e.faculty_name}\n${e.room_name}` : "—");
         for (let i = 1; i < numBatches; i++) row.push("");
+        colIdx += numBatches;
       } else {
         const e = cellEntries[0];
         row.push(e ? `${e.subject_name}\n${e.faculty_name}\n${e.room_name}` : "—");
+        colIdx++;
       }
     }
     gridData.push(row);
+    xlRowIdx++;
   }
 
   const wsGrid = XLSX.utils.aoa_to_sheet(gridData);
   wsGrid["!cols"] = [{ wch: 22 }, ...Array(days.length * numBatches).fill({ wch: 20 })];
-  // Merge header cells for day names spanning batch columns
+  // Merge header cells for day names + lab block cells vertically
+  const allMerges: XLSX.Range[] = [...xlLabMerges];
   if (hasBatches) {
-    const merges: XLSX.Range[] = [];
     let col = 1;
     for (let d = 0; d < days.length; d++) {
       if (numBatches > 1) {
-        merges.push({ s: { r: 0, c: col }, e: { r: 0, c: col + numBatches - 1 } });
+        allMerges.push({ s: { r: 0, c: col }, e: { r: 0, c: col + numBatches - 1 } });
       }
       col += numBatches;
     }
-    wsGrid["!merges"] = merges;
   }
+  if (allMerges.length > 0) wsGrid["!merges"] = allMerges;
   XLSX.utils.book_append_sheet(wb, wsGrid, "Grid");
 
   // Sheet 2: Faculty load

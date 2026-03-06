@@ -95,7 +95,7 @@ export interface Room {
 }
 
 // ── Timetable ────────────────────────────────────────────
-export type TimetableStatus = "DRAFT" | "PUBLISHED" | "DELETED";
+export type TimetableStatus = "draft" | "published" | "deleted" | "DRAFT" | "PUBLISHED" | "DELETED";
 
 export interface TimetableEntry {
   entry_id: string;
@@ -181,6 +181,57 @@ export interface TimeSlot {
   start_time: string;   // "HH:MM"
   end_time: string;      // "HH:MM"
   slot_type: "lecture" | "lab" | "break";
+}
+
+// ── Scheduling (Reschedule / Proxy / Extra Lecture) ──────────
+export type BookingType = "reschedule" | "extra_lecture" | "proxy";
+export type BookingStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+export interface FreeSlot {
+  day: string;
+  period: number;
+  slot_label: string;
+  start_time: string;
+  end_time: string;
+}
+
+export interface FreeSlotWithRooms {
+  day: string;
+  period: number;
+  slot_label: string;
+  start_time: string;
+  end_time: string;
+  free_rooms: FreeRoom[];
+}
+
+export interface FreeRoom {
+  room_id: string;
+  room_name: string;
+  room_type: string;
+  capacity: number;
+}
+
+export interface FreeFaculty {
+  faculty_id: string;
+  name: string;
+  expertise: string[];
+  current_load: number;
+  max_weekly_load: number;
+}
+
+export interface SlotBooking {
+  booking_id: string;
+  booking_type: BookingType;
+  status: BookingStatus;
+  faculty_name: string;
+  subject_name: string;
+  day: string;
+  period: number;
+  room_name: string;
+  target_date: string | null;
+  reason: string | null;
+  requested_by_name: string;
+  created_at: string;
 }
 
 // Legacy helper — period number from slot_order, display times

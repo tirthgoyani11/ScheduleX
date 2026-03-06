@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Settings2, CalendarDays, Download, Building2, Sparkles,
   ChevronLeft, ChevronRight, ChevronDown, Clock, BookOpen, Users, DoorOpen,
-  Zap, Eye, AlertTriangle, LogOut, Shield, UserCog,
+  Zap, Eye, AlertTriangle, LogOut, Shield, UserCog, CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -46,6 +46,7 @@ const navItems: NavItem[] = [
     ],
   },
   { label: "Export", path: "/export", icon: Download },
+  { label: "Scheduling", path: "/scheduling", icon: CalendarClock, roles: ["super_admin", "dept_admin", "faculty"] },
 ];
 
 const settingsItems: NavItem[] = [

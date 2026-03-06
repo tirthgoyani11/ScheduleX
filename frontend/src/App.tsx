@@ -19,6 +19,7 @@ import TimetableListPage from "@/pages/timetable/List";
 import TimetableViewPage from "@/pages/timetable/View";
 import ConflictsPage from "@/pages/timetable/Conflicts";
 import ExportPage from "@/pages/Export";
+import SchedulingPage from "@/pages/Scheduling";
 import SettingsPage from "@/pages/Settings";
 import WhatsNewPage from "@/pages/WhatsNew";
 import NotFound from "@/pages/NotFound";
@@ -54,6 +55,7 @@ const App = () => (
             <Route path="/timetable/conflicts/:id" element={<RoleGuard roles={["super_admin", "dept_admin"]}><ConflictsPage /></RoleGuard>} />
             <Route path="/timetable/conflicts" element={<RoleGuard roles={["super_admin", "dept_admin"]}><ConflictsPage /></RoleGuard>} />
             <Route path="/export" element={<ExportPage />} />
+            <Route path="/scheduling" element={<RoleGuard roles={["super_admin", "dept_admin", "faculty"]}><SchedulingPage /></RoleGuard>} />
             <Route path="/settings" element={<RoleGuard roles={["super_admin"]}><SettingsPage /></RoleGuard>} />
             <Route path="/whats-new" element={<WhatsNewPage />} />
           </Route>
