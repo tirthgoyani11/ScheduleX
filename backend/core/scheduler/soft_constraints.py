@@ -160,6 +160,19 @@ def apply_soft_constraints(
         for (key, var) in by_theory_slot.get((day, 1), []):
             penalties.append(var * PENALTY_WEIGHTS["avoid_early_morning"])
 
+    # ── SC5: Room utilization — prefer best-fit rooms (weight: 40) ───────────
+    # Penalise assigning a room with significantly more capacity than needed
+    subject_by_id = {s.subject_id: s for s in data["subjects"]}
+    room_by_id = {r.room_id: r for r in data["rooms"]}
+    for key, var in variables.get("theory", {}).items():
+        _, sid, rid, _, _ = key
+        sub = subject_by_id.get(sid)
+        room = room_by_id.get(rid)
+        if sub and room:
+            excess = room.capacity - sub.batch_size
+            if excess > 10:
+                penalties.append(var * PENALTY_WEIGHTS["room_utilization"])
+
     log.info("soft_constraints_applied", penalty_terms=len(penalties))
     return penalties
 

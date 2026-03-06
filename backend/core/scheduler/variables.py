@@ -21,6 +21,86 @@ from models.timeslot import SlotType
 log = structlog.get_logger()
 
 
+def _infer_lab_category(room_name: str) -> str:
+    """Infer lab category from room name for subject-lab matching."""
+    n = room_name.lower()
+    if any(k in n for k in ["computer lab", "networking lab", "ai/ml lab"]):
+        return "computer"
+    if "electronics lab" in n:
+        return "electronics"
+    if any(k in n for k in ["electrical", "power systems lab", "power system lab"]):
+        return "electrical"
+    if any(k in n for k in ["workshop", "mechanical"]):
+        return "mechanical"
+    if any(k in n for k in ["chemical", "petroleum"]):
+        return "chemistry_eng"
+    if "physics lab" in n:
+        return "physics"
+    if "chemistry lab" in n:
+        return "chemistry"
+    if any(k in n for k in ["design studio", "simulation", "3d printing"]):
+        return "design"
+    if "robotics" in n:
+        return "robotics"
+    if "iot lab" in n:
+        return "iot"
+    return "general"
+
+
+def _infer_subject_lab_needs(subject_name: str) -> set[str]:
+    """Return set of compatible lab categories for a subject with lab component."""
+    n = subject_name.lower()
+
+    # Physical science labs
+    if "physics" in n:
+        return {"physics"}
+    if n.startswith("chemistry") and "chemical" not in n:
+        return {"chemistry"}
+
+    # Chemical engineering labs
+    if any(k in n for k in ["chemical", "petroleum", "polymer"]):
+        return {"chemistry_eng"}
+
+    # Mechanical workshops
+    if any(k in n for k in ["workshop", "smithy", "fitting", "welding"]):
+        return {"mechanical"}
+    if "basic mechanical" in n:
+        return {"mechanical"}
+
+    # Electrical labs
+    if any(k in n for k in ["basic electrical", "electrical machine", "electrical measurement", "power system"]):
+        return {"electrical"}
+
+    # Engineering graphics / CAD
+    if any(k in n for k in ["engineering graphics", "drafting"]):
+        return {"design", "computer"}
+
+    # Electronics-only subjects
+    if any(k in n for k in [
+        "electronic device", "electronic circuit", "digital electronics",
+        "analog communication", "digital communication",
+        "vlsi", "linear integrated", "control system",
+        "wireless communication", "digital signal",
+        "antenna", "network analysis", "basic electronics",
+    ]):
+        return {"electronics"}
+
+    # Subjects that could use electronics OR computer labs
+    if any(k in n for k in ["digital logic", "digital system", "microprocessor", "microcontroller", "embedded"]):
+        return {"electronics", "computer"}
+
+    # Robotics
+    if "robotics" in n:
+        return {"robotics", "computer"}
+
+    # IoT
+    if "iot" in n or "internet of things" in n:
+        return {"computer", "iot"}
+
+    # Default: computer lab (programming, DS, algorithms, web, DB, AI, ML, etc.)
+    return {"computer"}
+
+
 def build_variables(model: cp_model.CpModel, data: dict) -> dict:
     faculty_subject_map: dict[str, list[str]] = data.get("faculty_subject_map", {})
     days = data["days"]
@@ -42,8 +122,12 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
     lab_periods = list(usable_periods)
 
     # ── Classify rooms ────────────────────────────────────────────────────────
-    classrooms = [r for r in rooms if r.room_type.value != "lab"]
+    # Theory: only CLASSROOM rooms (exclude seminar halls & auditorium)
+    classrooms = [r for r in rooms if r.room_type.value == "classroom"]
     lab_rooms = [r for r in rooms if r.room_type.value == "lab"]
+
+    # Pre-compute lab categories for subject-lab matching
+    lab_room_categories = {r.room_id: _infer_lab_category(r.name) for r in lab_rooms}
 
     # ── Build reverse map: faculty_id → [subject_ids] ─────────────────────────
     faculty_to_subjects: dict[str, list[str]] = {}
@@ -134,9 +218,13 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
 
             # ── Lab variables ─────────────────────────────────────────────────
             if subject.lab_hours > 0 and batches and lab_periods:
+                subject_lab_needs = _infer_subject_lab_needs(subject.name)
                 for batch in batches:
                     bid = batch.batch_id
                     for room in lab_rooms:
+                        # Only allow labs whose category matches the subject
+                        if lab_room_categories[room.room_id] not in subject_lab_needs:
+                            continue
                         if room.capacity < batch.size:
                             continue
                         rid = room.room_id
