@@ -61,6 +61,52 @@ export default function TimetableViewPage() {
     return map;
   }, [tt]);
 
+  // Detect consecutive identical lab blocks for visual merging
+  const mergedLabBlocks = useMemo(() => {
+    if (!tt) return new Map<string, { type: "start"; span: number } | { type: "skip" }>();
+    const map = new Map<string, { type: "start"; span: number } | { type: "skip" }>();
+    const nonBreakSlots = slots
+      .filter((s) => s.slot_type !== "break")
+      .sort((a, b) => a.slot_order - b.slot_order);
+
+    for (const day of days) {
+      let i = 0;
+      while (i < nonBreakSlots.length) {
+        const curr = nonBreakSlots[i];
+        const currBatch = (entryLookup.get(`${day}|${curr.slot_order}`) || []).filter((e) => e.batch);
+        if (currBatch.length === 0) { i++; continue; }
+
+        const currSig = currBatch
+          .map((e) => `${e.subject_name}|${e.batch}|${e.faculty_name}|${e.room_name}`)
+          .sort()
+          .join(",");
+
+        let span = 1;
+        while (i + span < nonBreakSlots.length) {
+          const next = nonBreakSlots[i + span];
+          const nextBatch = (entryLookup.get(`${day}|${next.slot_order}`) || []).filter((e) => e.batch);
+          const nextSig = nextBatch
+            .map((e) => `${e.subject_name}|${e.batch}|${e.faculty_name}|${e.room_name}`)
+            .sort()
+            .join(",");
+          if (nextSig === currSig) span++;
+          else break;
+        }
+
+        if (span > 1) {
+          map.set(`${day}|${curr.slot_order}`, { type: "start", span });
+          for (let j = 1; j < span; j++) {
+            map.set(`${day}|${nonBreakSlots[i + j].slot_order}`, { type: "skip" });
+          }
+          i += span;
+        } else {
+          i++;
+        }
+      }
+    }
+    return map;
+  }, [tt, days, slots, entryLookup]);
+
   if (timetableLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -134,6 +180,10 @@ export default function TimetableViewPage() {
                   </td>
 
                   {days.map((day) => {
+                    // Skip cells consumed by a rowSpan above
+                    const mergeInfo = mergedLabBlocks.get(`${day}|${slot.slot_order}`);
+                    if (mergeInfo?.type === "skip") return null;
+
                     // Break row
                     if (slot.slot_type === "break") {
                       return (
@@ -169,8 +219,9 @@ export default function TimetableViewPage() {
                     }
 
                     // Lab entries with batches — show side-by-side sub-columns like GCET reference
+                    const labRowSpan = mergeInfo?.type === "start" ? mergeInfo.span : undefined;
                     return (
-                      <td key={day} className="py-1 px-1 border-b border-border">
+                      <td key={day} className="py-1 px-1 border-b border-border" rowSpan={labRowSpan}>
                         <div className="flex gap-0.5">
                           {batchNames.map((batchName, bIdx) => {
                             const batchEntry = batchEntries.find((e) => e.batch === batchName);
