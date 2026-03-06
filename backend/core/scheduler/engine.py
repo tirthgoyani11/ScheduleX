@@ -27,6 +27,7 @@ from models.subject import Subject
 from models.room import Room
 from models.college import Department
 from models.timeslot import TimeSlotConfig, SlotType
+from models.batch import Batch
 
 from core.scheduler.variables import build_variables
 from core.scheduler.hard_constraints import apply_hard_constraints
@@ -72,7 +73,7 @@ async def generate_timetable(
     model = cp_model.CpModel()
     variables = build_variables(model, data)
 
-    if not variables["assignments"]:
+    if not variables["theory"] and not variables["lab"]:
         return _fail(
             "No valid assignment variables could be created. "
             "Check faculty-subject mapping, room capacities, and lab availability."
@@ -244,6 +245,15 @@ async def _load_scheduling_data(
     # Build a lookup for soft constraints (break detection, etc.)
     slot_lookup = {s.slot_order: s for s in all_slots}
 
+    # ── Load batches for this dept+semester ────────────────────────────────────
+    batch_result = await db.execute(
+        select(Batch).where(
+            Batch.dept_id == timetable.dept_id,
+            Batch.semester == timetable.semester,
+        ).order_by(Batch.name)
+    )
+    batch_list = batch_result.scalars().all()
+
     return {
         "timetable": timetable,
         "college_id": college_id,
@@ -257,6 +267,7 @@ async def _load_scheduling_data(
         "periods": periods,
         "all_slots": all_slots,
         "slot_lookup": slot_lookup,
+        "batches": batch_list,
     }
 
 
@@ -273,15 +284,25 @@ async def _persist_solution(
 
     college_id = data["college_id"]
     dept_id = data["timetable"].dept_id
+    batch_by_id = {b.batch_id: b for b in data.get("batches", [])}
 
-    # Look up subject batch for the entry
-    subject_by_id = {s.subject_id: s for s in data["subjects"]}
+    def _make_booking(entry_id, day, period, faculty_id, room_id):
+        return GlobalBooking(
+            booking_id=str(uuid.uuid4()),
+            college_id=college_id,
+            dept_id=dept_id,
+            timetable_entry_id=entry_id,
+            day=day,
+            period=period,
+            faculty_id=faculty_id,
+            room_id=room_id,
+            booking_type="timetable",
+        )
 
-    for (faculty_id, subject_id, room_id, day, period), var in variables["assignments"].items():
+    # ── Theory entries (batch = None) ─────────────────────────────────────────
+    for (faculty_id, subject_id, room_id, day, period), var in variables["theory"].items():
         if solver.Value(var) == 1:
             entry_id = str(uuid.uuid4())
-            subject = subject_by_id.get(subject_id)
-
             entry = TimetableEntry(
                 entry_id=entry_id,
                 timetable_id=timetable_id,
@@ -291,21 +312,29 @@ async def _persist_solution(
                 faculty_id=faculty_id,
                 room_id=room_id,
                 entry_type=EntryType.REGULAR,
-                batch=subject.batch if subject else None,
-            )
-            booking = GlobalBooking(
-                booking_id=str(uuid.uuid4()),
-                college_id=college_id,
-                dept_id=dept_id,
-                timetable_entry_id=entry_id,
-                day=day,
-                period=period,
-                faculty_id=faculty_id,
-                room_id=room_id,
-                booking_type="timetable",
+                batch=None,
             )
             entries.append(entry)
-            bookings.append(booking)
+            bookings.append(_make_booking(entry_id, day, period, faculty_id, room_id))
+
+    # ── Lab entries (batch = batch.name) ──────────────────────────────────────
+    for (faculty_id, subject_id, batch_id, room_id, day, period), var in variables["lab"].items():
+        if solver.Value(var) == 1:
+            entry_id = str(uuid.uuid4())
+            batch = batch_by_id.get(batch_id)
+            entry = TimetableEntry(
+                entry_id=entry_id,
+                timetable_id=timetable_id,
+                day=day,
+                period=period,
+                subject_id=subject_id,
+                faculty_id=faculty_id,
+                room_id=room_id,
+                entry_type=EntryType.REGULAR,
+                batch=batch.name if batch else None,
+            )
+            entries.append(entry)
+            bookings.append(_make_booking(entry_id, day, period, faculty_id, room_id))
 
     db.add_all(entries)
     db.add_all(bookings)

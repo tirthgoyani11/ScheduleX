@@ -1,71 +1,58 @@
 # core/scheduler/variables.py
 """
-OR-Tools CP-SAT variable builder.
+OR-Tools CP-SAT variable builder — Theory + Lab split.
 
-Creates one Boolean variable for each valid (faculty, subject, room, day, period) combination.
-Pre-filters invalid combos to reduce solver search space:
-  - Labs only get lab rooms
-  - Subject batch_size must fit room capacity
-  - Faculty can only teach subjects they're assigned to
-  - Slots already blocked by global bookings are excluded
+Two variable sets:
+  Theory:  X_t[faculty, subject, room, day, period]
+           Only for LECTURE-type periods and CLASSROOM/SEMINAR rooms.
+           Applied to whole division (no batch dimension).
 
-Also builds INDEXED LOOKUPS so constraint functions use O(1) dict access
-instead of scanning ALL variables — critical for scaling to 50+ rooms / 60+ faculty.
+  Lab:     X_l[faculty, subject, batch, room, day, period]
+           Only for LAB-type periods and LAB rooms.
+           Per-batch scheduling with synchronisation constraints.
+
+Indexed lookups are built for O(1) constraint access.
 """
 from ortools.sat.python import cp_model
 from collections import defaultdict
 import structlog
+from models.timeslot import SlotType
 
 log = structlog.get_logger()
 
 
 def build_variables(model: cp_model.CpModel, data: dict) -> dict:
-    """
-    Build decision variables for the CP-SAT model.
-
-    Each variable X[f, s, r, d, p] is a BoolVar meaning:
-      "Faculty f teaches Subject s in Room r on Day d, Period p"
-
-    Returns dict with:
-        assignments:             {(fid, sid, rid, day, period): BoolVar}
-        by_faculty_slot:         {(fid, day, period): [BoolVar]}
-        by_room_slot:            {(rid, day, period): [BoolVar]}
-        by_faculty:              {fid: [(key, BoolVar)]}
-        by_subject_faculty:      {(sid, fid): [(key, BoolVar)]}
-        by_subject_faculty_day:  {(sid, fid, day): [BoolVar]}
-        by_batch_slot:           {(batch, day, period): [BoolVar]}
-        by_day_period:           {(day, period): [(key, BoolVar)]}
-        by_faculty_day:          {(fid, day): [(period, BoolVar)]}
-    """
-    assignments: dict[tuple, cp_model.IntVar] = {}
-
-    # ── Index dictionaries ────────────────────────────────────────────────────
-    by_faculty_slot: dict[tuple, list] = defaultdict(list)
-    by_room_slot: dict[tuple, list] = defaultdict(list)
-    by_faculty: dict[str, list] = defaultdict(list)
-    by_subject_faculty: dict[tuple, list] = defaultdict(list)
-    by_subject_faculty_day: dict[tuple, list] = defaultdict(list)
-    by_batch_slot: dict[tuple, list] = defaultdict(list)
-    by_day_period: dict[tuple, list] = defaultdict(list)
-    by_faculty_day: dict[tuple, list] = defaultdict(list)
-
     faculty_subject_map: dict[str, list[str]] = data.get("faculty_subject_map", {})
     days = data["days"]
     periods = data["periods"]
     rooms = data["rooms"]
     subjects = data["subjects"]
+    batches = data.get("batches", [])
+    slot_lookup = data.get("slot_lookup", {})
 
-    # Build a reverse map: faculty_id -> [subject_ids]
-    # faculty_subject_map is {subject_id: [faculty_ids]}
+    # ── Classify periods by type ──────────────────────────────────────────────
+    lecture_periods = []
+    lab_periods = []
+    for p in periods:
+        slot = slot_lookup.get(p)
+        if slot and slot.slot_type == SlotType.LAB:
+            lab_periods.append(p)
+        else:
+            lecture_periods.append(p)
+
+    # ── Classify rooms ────────────────────────────────────────────────────────
+    classrooms = [r for r in rooms if r.room_type.value != "lab"]
+    lab_rooms = [r for r in rooms if r.room_type.value == "lab"]
+
+    # ── Build reverse map: faculty_id → [subject_ids] ─────────────────────────
     faculty_to_subjects: dict[str, list[str]] = {}
-    for subject_id, faculty_ids in faculty_subject_map.items():
-        for fid in faculty_ids:
-            faculty_to_subjects.setdefault(fid, []).append(subject_id)
+    for sid, fids in faculty_subject_map.items():
+        for fid in fids:
+            faculty_to_subjects.setdefault(fid, []).append(sid)
 
-    # Build subject lookup
     subject_by_id = {s.subject_id: s for s in subjects}
 
-    # Pre-compute blocked slots from existing bookings + general blocks
+    # ── Pre-compute blocked slots ─────────────────────────────────────────────
     blocked_faculty_slots: set[tuple[str, str, int]] = set()
     blocked_room_slots: set[tuple[str, str, int]] = set()
     for booking in data.get("existing_bookings", []):
@@ -74,87 +61,139 @@ def build_variables(model: cp_model.CpModel, data: dict) -> dict:
     for block in data.get("general_blocks", []):
         blocked_faculty_slots.add((block.faculty_id, block.day, block.period))
 
-    # Pre-compute eligible rooms per subject (filter once, reuse)
-    eligible_rooms: dict[str, list] = {}
-    for subject in subjects:
-        good_rooms = []
-        for room in rooms:
-            if subject.needs_lab and room.room_type.value != "lab":
-                continue
-            if room.capacity < subject.batch_size:
-                continue
-            good_rooms.append(room)
-        eligible_rooms[subject.subject_id] = good_rooms
+    # ── Variable dicts ────────────────────────────────────────────────────────
+    theory: dict[tuple, cp_model.IntVar] = {}
+    lab: dict[tuple, cp_model.IntVar] = {}
 
-    var_count = 0
-    skipped_rooms = 0
-    skipped_blocked = 0
+    # ── Combined indexes (theory + lab) ───────────────────────────────────────
+    by_faculty_slot: dict[tuple, list] = defaultdict(list)
+    by_room_slot: dict[tuple, list] = defaultdict(list)
+    by_faculty: dict[str, list] = defaultdict(list)
+    by_faculty_day: dict[tuple, list] = defaultdict(list)
+
+    # ── Theory-specific indexes ───────────────────────────────────────────────
+    by_theory_subject_faculty: dict[tuple, list] = defaultdict(list)
+    by_theory_slot: dict[tuple, list] = defaultdict(list)
+    by_theory_subject_faculty_day: dict[tuple, list] = defaultdict(list)
+
+    # ── Lab-specific indexes ──────────────────────────────────────────────────
+    by_lab_subject_faculty_batch: dict[tuple, list] = defaultdict(list)
+    by_lab_batch_slot: dict[tuple, list] = defaultdict(list)
+    by_lab_subject_slot: dict[tuple, list] = defaultdict(list)
+    by_lab_slot: dict[tuple, list] = defaultdict(list)
+
+    theory_count = 0
+    lab_count = 0
+    skipped = 0
 
     for faculty in data["faculty"]:
         fid = faculty.faculty_id
-        assigned_subject_ids = faculty_to_subjects.get(fid, [])
-        if not assigned_subject_ids:
+        assigned_sids = faculty_to_subjects.get(fid, [])
+        if not assigned_sids:
             continue
 
-        for sid in assigned_subject_ids:
+        for sid in assigned_sids:
             subject = subject_by_id.get(sid)
             if subject is None:
                 continue
 
-            rooms_for_subject = eligible_rooms.get(sid, [])
-            skipped_rooms += len(rooms) - len(rooms_for_subject)
+            # ── Theory variables ──────────────────────────────────────────────
+            lh = subject.lecture_hours if subject.lecture_hours else subject.weekly_periods
+            if lh > 0:
+                for room in classrooms:
+                    if room.capacity < subject.batch_size:
+                        continue
+                    rid = room.room_id
+                    for day in days:
+                        for period in lecture_periods:
+                            if (fid, day, period) in blocked_faculty_slots:
+                                skipped += 1
+                                continue
+                            if (rid, day, period) in blocked_room_slots:
+                                skipped += 1
+                                continue
 
-            for room in rooms_for_subject:
-                rid = room.room_id
-                for day in days:
-                    for period in periods:
-                        # Pre-filter: skip globally blocked slots
-                        if (fid, day, period) in blocked_faculty_slots:
-                            skipped_blocked += 1
+                            var = model.NewBoolVar(
+                                f"T_{fid[:6]}_{sid[:6]}_{rid[:6]}_{day[:3]}_{period}"
+                            )
+                            key = (fid, sid, rid, day, period)
+                            theory[key] = var
+
+                            by_faculty_slot[(fid, day, period)].append(var)
+                            by_room_slot[(rid, day, period)].append(var)
+                            by_faculty[fid].append((key, var))
+                            by_faculty_day[(fid, day)].append((period, var))
+                            by_theory_subject_faculty[(sid, fid)].append((key, var))
+                            by_theory_slot[(day, period)].append((key, var))
+                            by_theory_subject_faculty_day[(sid, fid, day)].append(var)
+
+                            theory_count += 1
+
+            # ── Lab variables ─────────────────────────────────────────────────
+            if subject.lab_hours > 0 and batches and lab_periods:
+                for batch in batches:
+                    bid = batch.batch_id
+                    for room in lab_rooms:
+                        if room.capacity < batch.size:
                             continue
-                        if (rid, day, period) in blocked_room_slots:
-                            skipped_blocked += 1
-                            continue
+                        rid = room.room_id
+                        for day in days:
+                            for period in lab_periods:
+                                if (fid, day, period) in blocked_faculty_slots:
+                                    skipped += 1
+                                    continue
+                                if (rid, day, period) in blocked_room_slots:
+                                    skipped += 1
+                                    continue
 
-                        var_name = f"X_{fid[:8]}_{sid[:8]}_{rid[:8]}_{day[:3]}_{period}"
-                        var = model.NewBoolVar(var_name)
-                        key = (fid, sid, rid, day, period)
-                        assignments[key] = var
+                                var = model.NewBoolVar(
+                                    f"L_{fid[:6]}_{sid[:6]}_{bid[:6]}_{rid[:6]}_{day[:3]}_{period}"
+                                )
+                                key = (fid, sid, bid, rid, day, period)
+                                lab[key] = var
 
-                        # Populate indexes
-                        by_faculty_slot[(fid, day, period)].append(var)
-                        by_room_slot[(rid, day, period)].append(var)
-                        by_faculty[fid].append((key, var))
-                        by_subject_faculty[(sid, fid)].append((key, var))
-                        by_subject_faculty_day[(sid, fid, day)].append(var)
-                        by_day_period[(day, period)].append((key, var))
-                        by_faculty_day[(fid, day)].append((period, var))
+                                by_faculty_slot[(fid, day, period)].append(var)
+                                by_room_slot[(rid, day, period)].append(var)
+                                by_faculty[fid].append((key, var))
+                                by_faculty_day[(fid, day)].append((period, var))
+                                by_lab_subject_faculty_batch[(sid, fid, bid)].append(
+                                    (key, var)
+                                )
+                                by_lab_batch_slot[(bid, day, period)].append(var)
+                                by_lab_subject_slot[(sid, day, period)].append(var)
+                                by_lab_slot[(day, period)].append(var)
 
-                        # Batch index
-                        batch = subject.batch
-                        if batch:
-                            by_batch_slot[(batch, day, period)].append(var)
-
-                        var_count += 1
+                                lab_count += 1
 
     log.info(
         "variables_built",
-        total_vars=var_count,
-        skipped_room_filter=skipped_rooms,
-        skipped_blocked_slots=skipped_blocked,
-        faculty_count=len(data["faculty"]),
-        subject_count=len(subjects),
-        room_count=len(rooms),
+        theory_vars=theory_count,
+        lab_vars=lab_count,
+        total_vars=theory_count + lab_count,
+        skipped_blocked_slots=skipped,
+        batch_count=len(batches),
+        lecture_periods=lecture_periods,
+        lab_periods=lab_periods,
     )
 
     return {
-        "assignments": assignments,
+        "theory": theory,
+        "lab": lab,
+        # combined
         "by_faculty_slot": dict(by_faculty_slot),
         "by_room_slot": dict(by_room_slot),
         "by_faculty": dict(by_faculty),
-        "by_subject_faculty": dict(by_subject_faculty),
-        "by_subject_faculty_day": dict(by_subject_faculty_day),
-        "by_batch_slot": dict(by_batch_slot),
-        "by_day_period": dict(by_day_period),
         "by_faculty_day": dict(by_faculty_day),
+        # theory-specific
+        "by_theory_subject_faculty": dict(by_theory_subject_faculty),
+        "by_theory_slot": dict(by_theory_slot),
+        "by_theory_subject_faculty_day": dict(by_theory_subject_faculty_day),
+        # lab-specific
+        "by_lab_subject_faculty_batch": dict(by_lab_subject_faculty_batch),
+        "by_lab_batch_slot": dict(by_lab_batch_slot),
+        "by_lab_subject_slot": dict(by_lab_subject_slot),
+        "by_lab_slot": dict(by_lab_slot),
+        # meta
+        "lecture_periods": lecture_periods,
+        "lab_periods": lab_periods,
     }

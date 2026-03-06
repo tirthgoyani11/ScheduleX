@@ -37,6 +37,7 @@ async def auto_assign_faculty(
     """
     from models.faculty import Faculty
     from models.subject import Subject
+    from models.batch import Batch
 
     fac_result = await db.execute(
         select(Faculty).where(Faculty.dept_id == current_user.dept_id)
@@ -50,6 +51,15 @@ async def auto_assign_faculty(
         )
     )
     subject_list = sub_result.scalars().all()
+
+    # Count batches to weight lab load
+    batch_result = await db.execute(
+        select(Batch).where(
+            Batch.dept_id == current_user.dept_id,
+            Batch.semester == semester,
+        )
+    )
+    num_batches = len(batch_result.scalars().all()) or 1
 
     # Build name-keyword mapping for subjects
     # e.g. "Computer Networks" -> ["computer", "networks"]
@@ -109,8 +119,12 @@ async def auto_assign_faculty(
 
         return score
 
-    # Sort subjects by weekly_periods descending (assign heaviest first)
-    sorted_subjects = sorted(subject_list, key=lambda s: s.weekly_periods, reverse=True)
+    # Sort subjects by total load descending (assign heaviest first)
+    def _subject_load(s):
+        lh = s.lecture_hours if s.lecture_hours else s.weekly_periods
+        return lh + s.lab_hours * num_batches
+
+    sorted_subjects = sorted(subject_list, key=_subject_load, reverse=True)
 
     for subject in sorted_subjects:
         candidates = []
@@ -126,13 +140,13 @@ async def auto_assign_faculty(
             candidates.sort(key=lambda x: (-x[0], faculty_load[x[1].faculty_id]))
             best_faculty = candidates[0][1]
             assignments[subject.subject_id] = best_faculty.faculty_id
-            faculty_load[best_faculty.faculty_id] += subject.weekly_periods
+            faculty_load[best_faculty.faculty_id] += _subject_load(subject)
         else:
             # No match found — assign least loaded faculty as fallback
             if faculty_list:
                 least_loaded = min(faculty_list, key=lambda f: faculty_load[f.faculty_id])
                 assignments[subject.subject_id] = least_loaded.faculty_id
-                faculty_load[least_loaded.faculty_id] += subject.weekly_periods
+                faculty_load[least_loaded.faculty_id] += _subject_load(subject)
 
     # Convert to {faculty_id: [subject_ids]} for frontend
     result: dict[str, list[str]] = {}
