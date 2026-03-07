@@ -2,10 +2,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from typing import Optional
 from dependencies import get_db, require_any_admin, get_current_user
 from models.timetable import Timetable, TimetableEntry, TimetableStatus
 from models.global_booking import GlobalBooking
-from models.user import User
+from models.user import User, UserRole
+from models.college import Department
 from schemas.timetable import (
     TimetableCreateRequest, TimetableResponse,
     TimetablePublishResponse, TimetableEntryResponse,
@@ -151,23 +153,38 @@ async def auto_assign_faculty(
 
 @router.get("", response_model=list[TimetableResponse])
 async def list_timetables(
+    dept_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all timetables for the current user's department."""
+    """List timetables. Super admin sees all (optionally filtered by dept_id)."""
     from models.subject import Subject as SubjectModel
     from models.faculty import Faculty as FacultyModel
     from models.room import Room as RoomModel
 
-    result = await db.execute(
-        select(Timetable)
-        .where(
-            Timetable.dept_id == current_user.dept_id,
-            Timetable.status != TimetableStatus.DELETED,
-        )
-        .order_by(Timetable.created_at.desc())
-    )
+    query = select(Timetable).where(
+        Timetable.status != TimetableStatus.DELETED,
+    ).order_by(Timetable.created_at.desc())
+
+    if current_user.role == UserRole.SUPER_ADMIN:
+        if dept_id:
+            query = query.where(Timetable.dept_id == dept_id)
+    else:
+        query = query.where(Timetable.dept_id == current_user.dept_id)
+
+    result = await db.execute(query)
     timetables = result.scalars().all()
+
+    # Pre-fetch department names for all timetables
+    dept_ids = {tt.dept_id for tt in timetables if tt.dept_id}
+    dept_name_map: dict[str, str] = {}
+    if dept_ids:
+        dept_result = await db.execute(
+            select(Department).where(Department.dept_id.in_(dept_ids))
+        )
+        for dept in dept_result.scalars().all():
+            dept_name_map[dept.dept_id] = dept.name
+
     responses = []
     for tt in timetables:
         entry_result = await db.execute(
@@ -191,6 +208,8 @@ async def list_timetables(
             ))
         responses.append(TimetableResponse(
             timetable_id=tt.timetable_id,
+            dept_id=tt.dept_id,
+            dept_name=dept_name_map.get(tt.dept_id, "Unknown"),
             semester=tt.semester,
             academic_year=tt.academic_year,
             status=tt.status.value,
@@ -368,12 +387,10 @@ async def get_timetable(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a full timetable with all entries."""
-    result = await db.execute(
-        select(Timetable).where(
-            Timetable.timetable_id == timetable_id,
-            Timetable.dept_id == current_user.dept_id,
-        )
-    )
+    query = select(Timetable).where(Timetable.timetable_id == timetable_id)
+    if current_user.role != UserRole.SUPER_ADMIN:
+        query = query.where(Timetable.dept_id == current_user.dept_id)
+    result = await db.execute(query)
     timetable = result.scalar_one_or_none()
     if not timetable:
         raise HTTPException(status_code=404, detail="Timetable not found")
@@ -405,8 +422,13 @@ async def get_timetable(
             batch=entry.batch,
         ))
 
+    # Resolve department name
+    dept = await db.get(Department, timetable.dept_id) if timetable.dept_id else None
+
     return TimetableResponse(
         timetable_id=timetable.timetable_id,
+        dept_id=timetable.dept_id,
+        dept_name=dept.name if dept else "Unknown",
         semester=timetable.semester,
         academic_year=timetable.academic_year,
         status=timetable.status.value,
@@ -427,12 +449,10 @@ async def publish_timetable(
     Publishes a DRAFT timetable. Idempotent.
     Triggers faculty notification via WhatsApp + Email.
     """
-    result = await db.execute(
-        select(Timetable).where(
-            Timetable.timetable_id == timetable_id,
-            Timetable.dept_id == current_user.dept_id,
-        )
-    )
+    query = select(Timetable).where(Timetable.timetable_id == timetable_id)
+    if current_user.role != UserRole.SUPER_ADMIN:
+        query = query.where(Timetable.dept_id == current_user.dept_id)
+    result = await db.execute(query)
     timetable = result.scalar_one_or_none()
     if not timetable:
         raise HTTPException(status_code=404, detail="Timetable not found")
@@ -472,12 +492,10 @@ async def delete_timetable(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a timetable and release all its global_bookings slots."""
-    result = await db.execute(
-        select(Timetable).where(
-            Timetable.timetable_id == timetable_id,
-            Timetable.dept_id == current_user.dept_id,
-        )
-    )
+    query = select(Timetable).where(Timetable.timetable_id == timetable_id)
+    if current_user.role != UserRole.SUPER_ADMIN:
+        query = query.where(Timetable.dept_id == current_user.dept_id)
+    result = await db.execute(query)
     timetable = result.scalar_one_or_none()
     if not timetable:
         raise HTTPException(status_code=404, detail="Timetable not found")

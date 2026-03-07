@@ -3,13 +3,17 @@ import { api } from "@/lib/api-client";
 import type { Timetable, JobResponse, GenerateAllResponse } from "@/types";
 import { toast } from "sonner";
 
-export function useTimetable(timetableId?: string) {
+export function useTimetable(timetableId?: string, deptId?: string) {
   const qc = useQueryClient();
 
   // Fetch list of timetables
   const listQuery = useQuery<Timetable[]>({
-    queryKey: ["timetables"],
-    queryFn: () => api.get("/timetable"),
+    queryKey: ["timetables", deptId],
+    queryFn: () => {
+      const params: Record<string, string> = {};
+      if (deptId) params.dept_id = deptId;
+      return api.get("/timetable", params);
+    },
     enabled: !timetableId,
   });
 

@@ -110,6 +110,8 @@ export interface TimetableEntry {
 
 export interface Timetable {
   timetable_id: string;
+  dept_id: string | null;
+  dept_name: string | null;
   semester: number;
   academic_year: string;
   status: TimetableStatus;

@@ -31,6 +31,8 @@ class TimetableEntryResponse(BaseModel):
 
 class TimetableResponse(BaseModel):
     timetable_id: str
+    dept_id: str | None = None
+    dept_name: str | None = None
     semester: int
     academic_year: str
     status: str
