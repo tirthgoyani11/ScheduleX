@@ -2,8 +2,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from dependencies import get_db, require_any_admin
-from models.user import User
+from dependencies import get_db, get_current_user, require_any_admin
+from models.user import User, UserRole
 from models.faculty import Faculty
 from models.timetable import Timetable, TimetableEntry, TimetableStatus
 from models.room import Room
@@ -67,7 +67,7 @@ async def dashboard(
 
 @router.get("/faculty-load")
 async def faculty_load(
-    current_user: User = Depends(require_any_admin),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Faculty weekly load analysis."""
@@ -78,7 +78,7 @@ async def faculty_load(
         .where(Timetable.status != TimetableStatus.DELETED)
         .subquery()
     )
-    result = await db.execute(
+    query = (
         select(
             Faculty.faculty_id,
             Faculty.name,
@@ -89,8 +89,16 @@ async def faculty_load(
         )
         .outerjoin(active_entries, Faculty.faculty_id == active_entries.c.faculty_id)
         .join(Department, Faculty.dept_id == Department.dept_id)
-        .where(_dept_filter(Faculty.dept_id, current_user))
-        .group_by(Faculty.faculty_id, Faculty.name, Faculty.max_weekly_load, Faculty.dept_id, Department.code)
+    )
+
+    # Faculty can only see their own load. Admins keep department/college scope.
+    if current_user.role == UserRole.FACULTY:
+        query = query.where(Faculty.user_id == current_user.user_id)
+    else:
+        query = query.where(_dept_filter(Faculty.dept_id, current_user))
+
+    result = await db.execute(
+        query.group_by(Faculty.faculty_id, Faculty.name, Faculty.max_weekly_load, Faculty.dept_id, Department.code)
     )
     rows = result.all()
     return [

@@ -1,9 +1,11 @@
 import { BookOpen, CalendarDays, Clock, BarChart3 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { MetricCard } from "@/components/common/MetricCard";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useFaculty } from "@/hooks/useFaculty";
-import { useDashboard } from "@/hooks/useDashboard";
+import { api } from "@/lib/api-client";
+import type { FacultyLoad } from "@/types";
 import { DashboardSkeleton } from "@/components/skeletons/PageSkeletons";
 
 const greeting = () => {
@@ -16,16 +18,22 @@ const greeting = () => {
 export default function FacultyDashboard() {
   const user = useAuthStore((s) => s.user);
   const { data: facultyList, isLoading: facLoading } = useFaculty();
-  const { facultyLoad, isLoading: dashLoading } = useDashboard();
+  const { data: myLoadRows = [], isLoading: loadLoading } = useQuery<FacultyLoad[]>({
+    queryKey: ["analytics", "faculty-load", "faculty", user?.user_id],
+    queryFn: () => api.get("/analytics/faculty-load"),
+    enabled: !!user?.user_id,
+  });
 
-  const isLoading = facLoading || dashLoading;
+  const isLoading = facLoading || loadLoading;
   if (isLoading) return <DashboardSkeleton />;
 
   const userName = user?.full_name ?? "Faculty";
 
   // Find own faculty profile
   const myProfile = facultyList.length > 0 ? facultyList[0] : null;
-  const myLoad = facultyLoad.find((f) => f.faculty_id === myProfile?.faculty_id);
+  const myLoad = myProfile
+    ? myLoadRows.find((f) => f.faculty_id === myProfile.faculty_id)
+    : myLoadRows[0];
 
   const assignedPeriods = myLoad?.assigned_periods ?? 0;
   const maxLoad = myProfile?.max_weekly_load ?? myLoad?.max_weekly_load ?? 18;
