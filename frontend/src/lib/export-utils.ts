@@ -97,13 +97,9 @@ export async function exportDepartmentPDF(tt: Timetable) {
   await downloadPdf(`/export/department/${tt.timetable_id}`, filename);
 }
 
-export async function exportFacultyPDF(tt: Timetable, facultyName: string) {
-  const safeName = facultyName.replace(/\s+/g, "_");
-  const filename = `Schedule_${safeName}.pdf`;
-  await downloadPdf(
-    `/export/faculty/${tt.timetable_id}?faculty_name=${encodeURIComponent(facultyName)}`,
-    filename,
-  );
+export async function exportFacultyPDF(tt: Timetable) {
+  const filename = `Faculty_Schedules_Sem${tt.semester}_${tt.academic_year}.pdf`;
+  await downloadPdf(`/export/faculty/${tt.timetable_id}`, filename);
 }
 
 export async function exportRoomPDF(tt: Timetable) {

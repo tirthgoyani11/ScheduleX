@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { useTimetable } from "@/hooks/useTimetable";
-import { useFaculty } from "@/hooks/useFaculty";
 import { useTimeSlots } from "@/hooks/useTimeSlots";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -21,16 +20,14 @@ import {
 const exportOptions = [
   { icon: FileText, title: "Department PDF", description: "Full timetable grid, color coded, A4 landscape", format: "pdf" },
   { icon: Table2, title: "Excel Workbook", description: "4 sheets: Grid + Faculty + Room + Summary", format: "xlsx" },
-  { icon: User, title: "Faculty Schedule", description: "Individual schedule PDF for a faculty member", format: "faculty-pdf", hasFacultySelect: true },
+  { icon: User, title: "Faculty Schedule", description: "All faculty schedules, one per page", format: "faculty-pdf" },
   { icon: Building2, title: "Room Allocation", description: "Room-wise timetable view PDF", format: "room-pdf" },
 ];
 
 export default function ExportPage() {
   const { data: timetables, isLoading } = useTimetable();
-  const { data: allFaculty } = useFaculty();
   const { data: slots } = useTimeSlots();
   const [selectedTimetableId, setSelectedTimetableId] = useState("");
-  const [selectedFacultyName, setSelectedFacultyName] = useState("");
   const [exporting, setExporting] = useState<string | null>(null);
 
   // Fetch the full timetable (with entries) for the selected ID
@@ -49,11 +46,6 @@ export default function ExportPage() {
       toast.error("Selected timetable has no entries");
       return;
     }
-    if (format === "faculty-pdf" && !selectedFacultyName) {
-      toast.error("Please select a faculty member");
-      return;
-    }
-
     setExporting(format);
     try {
       switch (format) {
@@ -64,7 +56,7 @@ export default function ExportPage() {
           exportExcelWorkbook(selectedTT, slots);
           break;
         case "faculty-pdf":
-          await exportFacultyPDF(selectedTT, selectedFacultyName);
+          await exportFacultyPDF(selectedTT);
           break;
         case "room-pdf":
           await exportRoomPDF(selectedTT);
@@ -113,16 +105,7 @@ export default function ExportPage() {
                   <p className="text-sm text-muted-foreground mt-0.5">{opt.description}</p>
                 </div>
               </div>
-              {opt.hasFacultySelect && (
-                <Select value={selectedFacultyName} onValueChange={setSelectedFacultyName}>
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select faculty member" /></SelectTrigger>
-                  <SelectContent>
-                    {allFaculty.map((f) => (
-                      <SelectItem key={f.faculty_id} value={f.name}>{f.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+
               <Button
                 variant="outline"
                 className="rounded-xl btn-press gap-2 w-full"
