@@ -83,11 +83,14 @@ async def faculty_load(
             Faculty.faculty_id,
             Faculty.name,
             Faculty.max_weekly_load,
+            Faculty.dept_id,
+            Department.code.label("dept_code"),
             func.count(active_entries.c.entry_id).label("assigned_periods"),
         )
         .outerjoin(active_entries, Faculty.faculty_id == active_entries.c.faculty_id)
+        .join(Department, Faculty.dept_id == Department.dept_id)
         .where(_dept_filter(Faculty.dept_id, current_user))
-        .group_by(Faculty.faculty_id, Faculty.name, Faculty.max_weekly_load)
+        .group_by(Faculty.faculty_id, Faculty.name, Faculty.max_weekly_load, Faculty.dept_id, Department.code)
     )
     rows = result.all()
     return [
@@ -96,6 +99,8 @@ async def faculty_load(
             "name": r.name,
             "max_weekly_load": r.max_weekly_load,
             "assigned_periods": r.assigned_periods,
+            "dept_id": r.dept_id,
+            "dept_code": r.dept_code,
             "utilisation_pct": round(
                 (r.assigned_periods / r.max_weekly_load * 100) if r.max_weekly_load > 0 else 0,
                 1,

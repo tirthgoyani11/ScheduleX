@@ -1,9 +1,12 @@
 import { Link } from "react-router-dom";
+import { useState, useMemo } from "react";
 import { BookOpen, Users, Building2, Zap, Eye, Download, BarChart3, CalendarDays, Clock, Settings2 } from "lucide-react";
 import { MetricCard } from "@/components/common/MetricCard";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useDashboard } from "@/hooks/useDashboard";
+import { useDepartments } from "@/hooks/useDepartments";
 import { useAuthStore } from "@/store/useAuthStore";
 import { WorkloadChart } from "@/components/dashboard/WorkloadChart";
 import { RoomUtilizationChart } from "@/components/dashboard/RoomUtilizationChart";
@@ -18,19 +21,31 @@ const greeting = () => {
 
 export default function HodDashboard() {
   const { stats, facultyLoad, roomUtilisation, isLoading } = useDashboard();
+  const { data: departments } = useDepartments();
   const user = useAuthStore((s) => s.user);
+  const [selectedDept, setSelectedDept] = useState<string>("");
 
   if (isLoading) return <DashboardSkeleton />;
 
   const userName = user?.full_name?.split(" ")[0] ?? "HOD";
 
-  const workloadData = facultyLoad.map((f) => ({
-    name: f.name.split(" ").pop() ?? f.name,
-    fullName: f.name,
-    current: f.assigned_periods,
-    max: f.max_weekly_load,
-    percentage: f.utilisation_pct,
-  }));
+  const workloadData = useMemo(() => {
+    const allData = facultyLoad.map((f) => ({
+      name: f.name.split(" ").pop() ?? f.name,
+      fullName: f.name,
+      current: f.assigned_periods,
+      max: f.max_weekly_load,
+      percentage: f.utilisation_pct,
+      deptCode: f.dept_code,
+      deptId: f.dept_id,
+    }));
+    
+    if (!selectedDept && departments.length > 0) {
+      // Default to first department if none selected
+      return allData.filter((f) => f.deptId === departments[0].dept_id);
+    }
+    return allData.filter((f) => f.deptId === selectedDept);
+  }, [facultyLoad, selectedDept, departments]);
 
   const avgRoomUtil = roomUtilisation.length > 0
     ? Math.round(roomUtilisation.reduce((sum, r) => sum + r.utilisation_pct, 0) / roomUtilisation.length)
@@ -107,9 +122,25 @@ export default function HodDashboard() {
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="lg:col-span-3 bg-card rounded-lg shadow-sm p-5 overflow-hidden">
-          <h3 className="text-base font-medium font-display mb-4">Faculty Workload Distribution</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-medium font-display">Faculty Workload Distribution</h3>
+            <Select value={selectedDept || (departments[0]?.dept_id ?? "")} onValueChange={setSelectedDept}>
+              <SelectTrigger className="w-[180px] h-9">
+                <SelectValue placeholder="Select department" />
+              </SelectTrigger>
+              <SelectContent>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.dept_id} value={dept.dept_id}>
+                    {dept.code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {workloadData.length > 0 ? (
-            <WorkloadChart data={workloadData} />
+            <div className="overflow-y-auto max-h-[600px] pr-2">
+              <WorkloadChart data={workloadData} />
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">No faculty data yet. Add faculty members to see workload.</p>
           )}

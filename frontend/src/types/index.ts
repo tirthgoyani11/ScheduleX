@@ -156,6 +156,8 @@ export interface FacultyLoad {
   max_weekly_load: number;
   assigned_periods: number;
   utilisation_pct: number;
+  dept_id: string;
+  dept_code: string;
 }
 
 export interface RoomUtilisation {
