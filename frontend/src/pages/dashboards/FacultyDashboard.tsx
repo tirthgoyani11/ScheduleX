@@ -21,7 +21,7 @@ export default function FacultyDashboard() {
   const isLoading = facLoading || dashLoading;
   if (isLoading) return <DashboardSkeleton />;
 
-  const userName = user?.full_name?.split(" ")[0] ?? "Faculty";
+  const userName = user?.full_name ?? "Faculty";
 
   // Find own faculty profile
   const myProfile = facultyList.length > 0 ? facultyList[0] : null;
