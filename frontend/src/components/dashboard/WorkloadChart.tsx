@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Label } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 interface WorkloadItem {
   name: string;
@@ -17,64 +17,32 @@ export function WorkloadChart({ data }: { data: WorkloadItem[] }) {
     return "hsl(142, 64%, 24%)";
   };
 
-  // Group data by department
-  const groupedData: { dept: string; faculty: WorkloadItem[] }[] = [];
-  const deptMap = new Map<string, WorkloadItem[]>();
-  
-  data.forEach((item) => {
-    const dept = item.deptCode || "Unknown";
-    if (!deptMap.has(dept)) {
-      deptMap.set(dept, []);
-    }
-    deptMap.get(dept)!.push(item);
-  });
-
-  // Convert to array and sort departments
-  Array.from(deptMap.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .forEach(([dept, faculty]) => {
-      groupedData.push({ dept, faculty });
-    });
-
-  // If only one department, hide department headers for cleaner view
-  const showDeptHeaders = groupedData.length > 1;
+  const sortedData = [...data].sort((a, b) => a.name.localeCompare(b.name));
+  const chartHeight = Math.max(180, sortedData.length * 35);
 
   return (
-    <div className="space-y-1">
-      {groupedData.map(({ dept, faculty }) => (
-        <div key={dept} className="mb-4">
-          {showDeptHeaders && (
-            <div className="mb-2 px-2 py-1.5 bg-muted/50 rounded-md">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                {dept} Department
-              </h4>
-            </div>
-          )}
-          <ResponsiveContainer width="100%" height={Math.max(150, faculty.length * 35)}>
-            <BarChart data={faculty} layout="vertical" margin={{ left: 5, right: 20, top: 5, bottom: 5 }}>
-              <XAxis type="number" domain={[0, "auto"]} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-              <YAxis 
-                type="category" 
-                dataKey="name" 
-                width={100} 
-                tick={{ fontSize: 10 }} 
-                tickLine={false} 
-                axisLine={false}
-                interval={0}
-              />
-              <Tooltip
-                formatter={(value: number, _name: string, props: { payload: WorkloadItem }) => [`${value}/${props.payload.max} hrs`, props.payload.fullName]}
-                contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
-              />
-              <Bar dataKey="current" radius={[0, 6, 6, 0]} barSize={20}>
-                {faculty.map((entry) => (
-                  <Cell key={entry.name} fill={getColor(entry.percentage)} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      ))}
-    </div>
+    <ResponsiveContainer width="100%" height={chartHeight}>
+      <BarChart data={sortedData} layout="vertical" margin={{ left: 5, right: 20, top: 5, bottom: 5 }}>
+        <XAxis type="number" domain={[0, "auto"]} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+        <YAxis
+          type="category"
+          dataKey="name"
+          width={100}
+          tick={{ fontSize: 10 }}
+          tickLine={false}
+          axisLine={false}
+          interval={0}
+        />
+        <Tooltip
+          formatter={(value: number, _name: string, props: { payload: WorkloadItem }) => [`${value}/${props.payload.max} hrs`, props.payload.fullName]}
+          contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
+        />
+        <Bar dataKey="current" radius={[0, 6, 6, 0]} barSize={20}>
+          {sortedData.map((entry) => (
+            <Cell key={entry.name} fill={getColor(entry.percentage)} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
