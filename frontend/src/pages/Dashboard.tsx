@@ -27,7 +27,7 @@ export default function DashboardPage() {
 
   if (isLoading) return <DashboardSkeleton />;
 
-  const userName = user?.full_name?.split(" ")[0] ?? "Admin";
+  const userName = user?.full_name ?? "Admin";
 
   // Derive workload chart data from faculty load
   const workloadData = useMemo(() => {

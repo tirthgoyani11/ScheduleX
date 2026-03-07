@@ -1,5 +1,5 @@
 import { useLocation, Link } from "react-router-dom";
-import { Search, Bell, MessageSquare, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/store/useAuthStore";
 
@@ -52,17 +52,6 @@ export function Topbar() {
 
       {/* Right actions */}
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" className="rounded-xl">
-          <Search className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" className="rounded-xl relative">
-          <MessageSquare className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
-        </Button>
-        <Button variant="ghost" size="icon" className="rounded-xl relative">
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
-        </Button>
         {user?.role === "super_admin" && (
           <Button variant="ghost" className="rounded-xl text-sm gap-1.5 ml-2">
             CE

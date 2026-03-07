@@ -23,7 +23,7 @@ export default function HodDashboard() {
 
   if (isLoading) return <DashboardSkeleton />;
 
-  const userName = user?.full_name?.split(" ")[0] ?? "HOD";
+  const userName = user?.full_name ?? "HOD";
 
   const workloadData = useMemo(() => {
     const scopedFaculty = user?.dept_id
