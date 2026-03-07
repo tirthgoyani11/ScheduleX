@@ -25,10 +25,6 @@ export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const [selectedDept, setSelectedDept] = useState<string>("");
 
-  if (isLoading) return <DashboardSkeleton />;
-
-  const userName = user?.full_name ?? "Admin";
-
   // Derive workload chart data from faculty load
   const workloadData = useMemo(() => {
     const allData = facultyLoad.map((f) => ({
@@ -47,6 +43,10 @@ export default function DashboardPage() {
     }
     return allData.filter((f) => f.deptId === selectedDept);
   }, [facultyLoad, selectedDept, departments]);
+
+  if (isLoading) return <DashboardSkeleton />;
+
+  const userName = user?.full_name ?? "Admin";
 
   // Derive room utilisation average
   const avgRoomUtil = roomUtilisation.length > 0

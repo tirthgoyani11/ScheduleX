@@ -21,10 +21,6 @@ export default function HodDashboard() {
   const { stats, facultyLoad, roomUtilisation, isLoading } = useDashboard();
   const user = useAuthStore((s) => s.user);
 
-  if (isLoading) return <DashboardSkeleton />;
-
-  const userName = user?.full_name ?? "HOD";
-
   const workloadData = useMemo(() => {
     const scopedFaculty = user?.dept_id
       ? facultyLoad.filter((f) => f.dept_id === user.dept_id)
@@ -40,6 +36,10 @@ export default function HodDashboard() {
       deptId: f.dept_id,
     }));
   }, [facultyLoad, user?.dept_id]);
+
+  if (isLoading) return <DashboardSkeleton />;
+
+  const userName = user?.full_name ?? "HOD";
 
   const avgRoomUtil = roomUtilisation.length > 0
     ? Math.round(roomUtilisation.reduce((sum, r) => sum + r.utilisation_pct, 0) / roomUtilisation.length)
