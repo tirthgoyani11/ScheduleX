@@ -71,14 +71,21 @@ async def faculty_load(
     db: AsyncSession = Depends(get_db),
 ):
     """Faculty weekly load analysis."""
+    # Only count entries from non-deleted timetables
+    active_entries = (
+        select(TimetableEntry.entry_id, TimetableEntry.faculty_id)
+        .join(Timetable, TimetableEntry.timetable_id == Timetable.timetable_id)
+        .where(Timetable.status != TimetableStatus.DELETED)
+        .subquery()
+    )
     result = await db.execute(
         select(
             Faculty.faculty_id,
             Faculty.name,
             Faculty.max_weekly_load,
-            func.count(TimetableEntry.entry_id).label("assigned_periods"),
+            func.count(active_entries.c.entry_id).label("assigned_periods"),
         )
-        .outerjoin(TimetableEntry, Faculty.faculty_id == TimetableEntry.faculty_id)
+        .outerjoin(active_entries, Faculty.faculty_id == active_entries.c.faculty_id)
         .where(_dept_filter(Faculty.dept_id, current_user))
         .group_by(Faculty.faculty_id, Faculty.name, Faculty.max_weekly_load)
     )
@@ -106,14 +113,22 @@ async def room_utilisation(
     """Room utilisation across the college."""
     from models.global_booking import GlobalBooking
 
+    # Only count bookings tied to non-deleted timetables
+    active_bookings = (
+        select(GlobalBooking.booking_id, GlobalBooking.room_id)
+        .join(TimetableEntry, GlobalBooking.timetable_entry_id == TimetableEntry.entry_id)
+        .join(Timetable, TimetableEntry.timetable_id == Timetable.timetable_id)
+        .where(Timetable.status != TimetableStatus.DELETED)
+        .subquery()
+    )
     result = await db.execute(
         select(
             Room.room_id,
             Room.name,
             Room.capacity,
-            func.count(GlobalBooking.booking_id).label("booked_slots"),
+            func.count(active_bookings.c.booking_id).label("booked_slots"),
         )
-        .outerjoin(GlobalBooking, Room.room_id == GlobalBooking.room_id)
+        .outerjoin(active_bookings, Room.room_id == active_bookings.c.room_id)
         .where(Room.college_id == current_user.college_id)
         .group_by(Room.room_id, Room.name, Room.capacity)
     )

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Settings2, CalendarDays, Download, Building2, Sparkles,
+  LayoutDashboard, Settings2, CalendarDays, Download, Building2,
   ChevronLeft, ChevronRight, ChevronDown, Clock, BookOpen, Users, DoorOpen,
   Zap, Eye, AlertTriangle, LogOut, Shield, UserCog, CalendarClock, FileUp,
 } from "lucide-react";
@@ -53,7 +53,6 @@ const navItems: NavItem[] = [
 
 const settingsItems: NavItem[] = [
   { label: "School Settings", path: "/settings", icon: Building2, roles: ["super_admin"] },
-  { label: "What's New", path: "/whats-new", icon: Sparkles },
 ];
 
 export function AppSidebar({ onCollapseChange }: { onCollapseChange?: (collapsed: boolean) => void }) {
@@ -105,9 +104,7 @@ export function AppSidebar({ onCollapseChange }: { onCollapseChange?: (collapsed
       {/* Logo */}
       <div className="h-14 flex items-center px-4 border-b border-border">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-            <span className="text-primary-foreground font-display font-bold text-sm">X</span>
-          </div>
+          <img src="/logo.png" alt="ScheduleX" className="h-8 w-8 rounded-lg object-cover shrink-0" />
           {!collapsed && <span className="font-display font-semibold text-base truncate">ScheduleX</span>}
         </div>
       </div>

@@ -23,6 +23,32 @@ import { api } from "@/lib/api-client";
 import { apiClient } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
+/** Render lightweight markdown (bold, italic) into React elements */
+function formatMarkdown(text: string) {
+  // Split by **bold** and *italic* markers, return mixed string/JSX array
+  const parts: React.ReactNode[] = [];
+  // Process line by line to preserve whitespace
+  const regex = /\*\*(.+?)\*\*|\*(.+?)\*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    if (match[1] !== undefined) {
+      parts.push(<strong key={key++}>{match[1]}</strong>);
+    } else if (match[2] !== undefined) {
+      parts.push(<em key={key++}>{match[2]}</em>);
+    }
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts;
+}
+
 interface ChatMessage {
   id: number;
   role: "user" | "assistant";
@@ -347,7 +373,7 @@ export function ChatPanel() {
         title={open ? "Close assistant" : "Open AI assistant"}
       >
         <div className="relative h-6 w-6">
-          <img src="/chatbot-logo.png" alt="AI" className={cn(
+          <img src="/logo.png" alt="AI" className={cn(
             "absolute inset-0 h-full w-full object-contain scale-[2.4] transition-all duration-300",
             open ? "opacity-0 rotate-90 scale-0" : "opacity-100 rotate-0 scale-[2.4]",
           )} />
@@ -376,7 +402,7 @@ export function ChatPanel() {
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0">
           <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
-            <img src="/chatbot-logo.png" alt="AI" className="w-6 h-6 object-contain" />
+            <img src="/logo.png" alt="AI" className="w-6 h-6 object-contain" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold leading-tight">TimetableAI</p>
@@ -403,7 +429,7 @@ export function ChatPanel() {
               >
                 {msg.role === "assistant" && (
                   <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5 overflow-hidden">
-                    <img src="/chatbot-logo.png" alt="AI" className="w-5 h-5 object-contain" />
+                    <img src="/logo.png" alt="AI" className="w-5 h-5 object-contain" />
                   </div>
                 )}
                 <div
@@ -414,7 +440,7 @@ export function ChatPanel() {
                       : "bg-muted"
                   )}
                 >
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                  <p className="whitespace-pre-wrap">{formatMarkdown(msg.text)}</p>
                   {msg.data && msg.data.timetable_id && msg.data.export_ready && (
                     <ExportCard data={msg.data} />
                   )}
@@ -445,7 +471,7 @@ export function ChatPanel() {
             {loading && (
               <div className="flex gap-2 justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
-                  <img src="/chatbot-logo.png" alt="AI" className="w-5 h-5 object-contain" />
+                  <img src="/logo.png" alt="AI" className="w-5 h-5 object-contain" />
                 </div>
                 <div className="bg-muted rounded-2xl px-4 py-2.5 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />

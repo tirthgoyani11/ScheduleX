@@ -22,7 +22,6 @@ import ConflictsPage from "@/pages/timetable/Conflicts";
 import ExportPage from "@/pages/Export";
 import SchedulingPage from "@/pages/Scheduling";
 import SettingsPage from "@/pages/Settings";
-import WhatsNewPage from "@/pages/WhatsNew";
 import NotFound from "@/pages/NotFound";
 import { RoleDashboard } from "@/components/layout/RoleDashboard";
 import { RoleGuard } from "@/components/layout/RoleGuard";
@@ -59,7 +58,6 @@ const App = () => (
             <Route path="/export" element={<ExportPage />} />
             <Route path="/scheduling" element={<RoleGuard roles={["super_admin", "dept_admin", "faculty"]}><SchedulingPage /></RoleGuard>} />
             <Route path="/settings" element={<RoleGuard roles={["super_admin"]}><SettingsPage /></RoleGuard>} />
-            <Route path="/whats-new" element={<WhatsNewPage />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

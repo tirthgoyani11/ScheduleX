@@ -61,9 +61,7 @@ export default function LoginPage() {
         />
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-8">
-            <div className="h-12 w-12 rounded-lg bg-primary-foreground/10 border border-primary-foreground/20 flex items-center justify-center">
-              <span className="text-primary-foreground font-display font-bold text-xl">X</span>
-            </div>
+            <img src="/logo.png" alt="ScheduleX" className="h-14 w-14 rounded-xl object-cover" />
             <span className="text-primary-foreground font-display font-bold text-3xl">ScheduleX</span>
           </div>
           <p className="text-primary-foreground/70 text-xl font-body mb-10">

@@ -491,6 +491,12 @@ async def delete_timetable(
             GlobalBooking.timetable_entry_id.in_(entry_ids_query)
         )
     )
+    # Delete the timetable entries themselves
+    await db.execute(
+        TimetableEntry.__table__.delete().where(
+            TimetableEntry.timetable_id == timetable_id
+        )
+    )
 
     timetable.status = TimetableStatus.DELETED
     db.add(timetable)
