@@ -43,3 +43,29 @@ class TimetableResponse(BaseModel):
 class TimetablePublishResponse(BaseModel):
     message: str
     timetable_id: str
+
+
+class GenerateAllRequest(BaseModel):
+    academic_year: str = Field(..., pattern=r"^\d{4}-\d{2}$", description="e.g. 2025-26")
+    working_days: list[str] = Field(
+        default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        description="Days to schedule classes on",
+    )
+    time_limit_seconds: Optional[int] = Field(120, ge=30, le=600)
+
+
+class SemesterResult(BaseModel):
+    semester: int
+    timetable_id: str | None = None
+    status: str
+    score: float | None = None
+    entry_count: int = 0
+    wall_time: float = 0
+    error: str | None = None
+
+
+class GenerateAllResponse(BaseModel):
+    total: int
+    succeeded: int
+    failed: int
+    results: list[SemesterResult]

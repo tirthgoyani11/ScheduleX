@@ -762,6 +762,100 @@ async def handle_generate(
         }
 
 
+# ── GENERATE ALL ──────────────────────────────────────────────────
+async def handle_generate_all(
+    user_msg: str, entities: dict, db: AsyncSession,
+    college_id: str, dept_id: str,
+) -> dict:
+    """
+    Generate timetables for ALL semesters that have subjects in the
+    HOD's department.  Calls handle_generate() for each semester
+    sequentially, collecting results.
+    """
+    from models.subject import Subject as SubjectModel
+
+    # Find active semesters
+    all_subs = (await db.execute(
+        select(SubjectModel.semester)
+        .where(SubjectModel.dept_id == dept_id)
+        .distinct()
+    )).scalars().all()
+    active_semesters = sorted(s for s in all_subs if 1 <= s <= 8)
+
+    if not active_semesters:
+        return {
+            "reply": "No subjects found in your department for any semester.",
+            "data": None,
+        }
+
+    results = []
+    succeeded = 0
+    failed = 0
+
+    for sem in active_semesters:
+        try:
+            gen_result = await handle_generate(
+                user_msg=f"Generate timetable for semester {sem}",
+                entities={"semester": sem},
+                db=db,
+                college_id=college_id,
+                dept_id=dept_id,
+            )
+            data = gen_result.get("data") or {}
+            status = data.get("status", "UNKNOWN")
+            if status in ("OPTIMAL", "FEASIBLE"):
+                succeeded += 1
+                results.append({
+                    "semester": sem,
+                    "status": status,
+                    "score": data.get("score", 0),
+                    "entries": data.get("entry_count", 0),
+                    "time": data.get("wall_time", 0),
+                    "timetable_id": data.get("timetable_id"),
+                })
+            else:
+                failed += 1
+                results.append({
+                    "semester": sem,
+                    "status": status,
+                    "error": data.get("diagnosis", {}).get("message", "Failed"),
+                })
+        except Exception as exc:
+            failed += 1
+            results.append({"semester": sem, "status": "ERROR", "error": str(exc)})
+
+    # Build reply
+    lines = [
+        f"🎓 **Generated timetables for {succeeded}/{len(active_semesters)} semesters!**\n"
+    ]
+    for r in results:
+        if r.get("timetable_id"):
+            lines.append(
+                f"✅ Sem {r['semester']}: {r['status']} | "
+                f"Score: {r['score']}% | {r['entries']} entries | {r['time']}s"
+            )
+        else:
+            lines.append(f"❌ Sem {r['semester']}: {r.get('error', r['status'])}")
+
+    if failed:
+        lines.append(f"\n⚠️ {failed} semester(s) failed — try generating them individually.")
+    else:
+        lines.append("\n🎉 All timetables generated & published successfully!")
+
+    lines.append("\n📥 Say **\"Export PDF\"** to download any timetable.")
+
+    return {
+        "reply": "\n".join(lines),
+        "data": {
+            "action": "generate_all",
+            "total": len(active_semesters),
+            "succeeded": succeeded,
+            "failed": failed,
+            "results": results,
+        },
+    }
+
+
 # ── AUTO-FIX INFEASIBILITY ────────────────────────────────────────
 async def _auto_fix_infeasibility(
     diag_type: str,

@@ -9,6 +9,7 @@ from models.user import User
 from schemas.timetable import (
     TimetableCreateRequest, TimetableResponse,
     TimetablePublishResponse, TimetableEntryResponse,
+    GenerateAllRequest, GenerateAllResponse, SemesterResult,
 )
 from schemas.common import JobResponse
 from core.notifications.dispatcher import dispatch_event
@@ -284,6 +285,78 @@ async def generate_timetable(
         job_id=timetable.timetable_id,
         timetable_id=timetable.timetable_id,
         status=result.get("status", "UNKNOWN"),
+    )
+
+
+@router.post("/generate-all", response_model=GenerateAllResponse)
+async def generate_all_semesters(
+    request: GenerateAllRequest,
+    current_user: User = Depends(require_any_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate timetables for ALL semesters (1-8) that have subjects in
+    the HOD's department.  Auto-assigns faculty, runs solver, and
+    auto-publishes each semester sequentially.
+    """
+    from core.chatbot.handlers import handle_generate
+
+    results: list[SemesterResult] = []
+    succeeded = 0
+    failed = 0
+
+    # Find which semesters actually have subjects
+    from models.subject import Subject as SubjectModel
+    all_subs = (await db.execute(
+        select(SubjectModel.semester)
+        .where(SubjectModel.dept_id == current_user.dept_id)
+        .distinct()
+    )).scalars().all()
+    active_semesters = sorted(s for s in all_subs if 1 <= s <= 8)
+
+    for sem in active_semesters:
+        try:
+            gen_result = await handle_generate(
+                user_msg=f"Generate timetable for semester {sem}",
+                entities={"semester": sem},
+                db=db,
+                college_id=current_user.college_id,
+                dept_id=current_user.dept_id,
+            )
+            data = gen_result.get("data") or {}
+            status = data.get("status", "UNKNOWN")
+
+            if status in ("OPTIMAL", "FEASIBLE"):
+                succeeded += 1
+                results.append(SemesterResult(
+                    semester=sem,
+                    timetable_id=data.get("timetable_id"),
+                    status=status,
+                    score=data.get("score"),
+                    entry_count=data.get("entry_count", 0),
+                    wall_time=data.get("wall_time", 0),
+                ))
+            else:
+                failed += 1
+                diag = data.get("diagnosis", {})
+                results.append(SemesterResult(
+                    semester=sem,
+                    status=status,
+                    error=diag.get("message", gen_result.get("reply", "Generation failed")),
+                ))
+        except Exception as exc:
+            failed += 1
+            results.append(SemesterResult(
+                semester=sem,
+                status="ERROR",
+                error=str(exc),
+            ))
+
+    return GenerateAllResponse(
+        total=len(active_semesters),
+        succeeded=succeeded,
+        failed=failed,
+        results=results,
     )
 
 

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import type { Timetable, JobResponse } from "@/types";
+import type { Timetable, JobResponse, GenerateAllResponse } from "@/types";
 import { toast } from "sonner";
 
 export function useTimetable(timetableId?: string) {
@@ -43,6 +43,19 @@ export function useTimetable(timetableId?: string) {
     onError: () => toast.error("Failed to generate timetable"),
   });
 
+  const generateAllMutation = useMutation({
+    mutationFn: (body: {
+      academic_year: string;
+      working_days?: string[];
+      time_limit_seconds?: number;
+    }) => api.post<GenerateAllResponse>("/timetable/generate-all", body),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["timetables"] });
+      toast.success(`Generated ${data.succeeded}/${data.total} semesters`);
+    },
+    onError: () => toast.error("Failed to generate all timetables"),
+  });
+
   const publishMutation = useMutation({
     mutationFn: (id: string) => api.post(`/timetable/${id}/publish`),
     onSuccess: () => {
@@ -72,6 +85,8 @@ export function useTimetable(timetableId?: string) {
     // Mutations
     generate: generateMutation.mutateAsync,
     isGenerating: generateMutation.isPending,
+    generateAll: generateAllMutation.mutateAsync,
+    isGeneratingAll: generateAllMutation.isPending,
     publish: publishMutation.mutateAsync,
     remove: deleteMutation.mutateAsync,
     error: null,

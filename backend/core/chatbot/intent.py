@@ -11,7 +11,9 @@ You are an intent classifier for a university timetable chatbot.
 Classify the user message into EXACTLY ONE of these intents:
 
 INTENTS:
-- GENERATE    : User wants to generate/create a NEW timetable from scratch
+- GENERATE_ALL: User wants to generate timetables for ALL semesters at once (e.g. "generate all",
+                "create timetable for all semesters", "generate everything")
+- GENERATE    : User wants to generate/create a NEW timetable for a SPECIFIC semester
 - PUBLISH     : User wants to publish/finalize a timetable
 - EXPORT      : User wants to export/download a timetable as PDF or Excel
 - QUERY       : User is asking a question about a timetable — free rooms, free slots,
@@ -26,9 +28,10 @@ INTENTS:
 - SMALLTALK   : Greeting, thanks, off-topic, general chat
 
 IMPORTANT classification rules:
+- "generate all", "all semesters", "create all timetables", "generate everything" → GENERATE_ALL
 - "free slot", "free room", "which room/class is free", "available rooms" → QUERY
 - "reschedule", "move lecture", "swap", "add extra lecture", "change slot" → RESCHEDULE
-- "generate", "create timetable", "build schedule" → GENERATE
+- "generate", "create timetable", "build schedule" (for a specific semester) → GENERATE
 - Entity extraction: always try to extract semester number (1-8), day name, and period number.
   For period, look for: "period 3", "P3", "3rd period", "slot 3", "2nd", etc.
   For day, look for: "Monday", "Mon", "tuesday", etc.
@@ -82,6 +85,8 @@ def _keyword_fallback(msg: str) -> dict:
         entities["period"] = int(period_match.group(1))
 
     if any(w in m for w in ("generate", "create", "build")):
+        if any(w in m for w in ("all sem", "all timetable", "every sem", "all schedule", "everything")):
+            return {"intent": "GENERATE_ALL", "confidence": 0.8, "entities": entities}
         return {"intent": "GENERATE", "confidence": 0.7, "entities": entities}
     if any(w in m for w in ("publish", "finalize", "release")):
         return {"intent": "PUBLISH", "confidence": 0.7, "entities": entities}

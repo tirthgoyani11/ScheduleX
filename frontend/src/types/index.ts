@@ -125,6 +125,23 @@ export interface JobResponse {
   status: string;
 }
 
+export interface SemesterResult {
+  semester: number;
+  timetable_id?: string;
+  status: string;
+  score?: number;
+  entry_count: number;
+  wall_time: number;
+  error?: string;
+}
+
+export interface GenerateAllResponse {
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: SemesterResult[];
+}
+
 // ── Analytics ────────────────────────────────────────────
 export interface DashboardStats {
   faculty_count: number;

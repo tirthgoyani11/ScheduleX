@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Zap, ArrowLeft, ArrowRight, Check, Loader2, X, Wand2, AlertCircle } from "lucide-react";
+import { Zap, ArrowLeft, ArrowRight, Check, Loader2, X, Wand2, AlertCircle, Layers } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ const allDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturd
 
 export default function GeneratePage() {
   const store = useTimetableStore();
-  const { generate, isGenerating } = useTimetable();
+  const { generate, isGenerating, generateAll, isGeneratingAll } = useTimetable();
   const { data: allSubjects } = useSubjects(store.selectedSemester);
   const { data: allFaculty } = useFaculty();
   const { data: batches, create: createBatch, remove: removeBatch } = useBatches(store.selectedSemester);
@@ -32,6 +32,9 @@ export default function GeneratePage() {
   const [academicYear, setAcademicYear] = useState("2025-26");
   const [autoAssigning, setAutoAssigning] = useState(false);
   const [autoAssigned, setAutoAssigned] = useState(false);
+  const [generateAllResults, setGenerateAllResults] = useState<
+    { semester: number; status: string; score?: number; entry_count: number; wall_time: number; error?: string }[] | null
+  >(null);
 
   const semSubjects = allSubjects;
 
@@ -59,6 +62,22 @@ export default function GeneratePage() {
       setAutoAssigning(false);
     }
   }, [store.selectedSemester]);
+
+  const handleGenerateAll = async () => {
+    setGenerateAllResults(null);
+    setGeneratingText("Generating timetables for all semesters...");
+    try {
+      const result = await generateAll({
+        academic_year: academicYear,
+        working_days: store.workingDays,
+        time_limit_seconds: 120,
+      });
+      setGenerateAllResults(result.results);
+      setGeneratingText("");
+    } catch {
+      setGeneratingText("Generation failed. Please try again.");
+    }
+  };
 
   // Auto-assign when entering step 2 for the first time
   useEffect(() => {
@@ -214,9 +233,70 @@ export default function GeneratePage() {
               </div>
             </div>
           </div>
-          <Button onClick={() => { setAutoAssigned(false); setAssignments({}); store.setStep(2); }} className="rounded-xl btn-press gap-2">
-            Next <ArrowRight className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-3 items-center">
+            <Button onClick={() => { setAutoAssigned(false); setAssignments({}); store.setStep(2); }} className="rounded-xl btn-press gap-2">
+              Next <ArrowRight className="h-4 w-4" />
+            </Button>
+            <span className="text-xs text-muted-foreground">or</span>
+            <Button
+              variant="outline"
+              onClick={handleGenerateAll}
+              disabled={isGeneratingAll}
+              className="rounded-xl gap-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+            >
+              {isGeneratingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
+              {isGeneratingAll ? "Generating All..." : "Generate All Semesters"}
+            </Button>
+          </div>
+
+          {/* Generate All Results */}
+          {isGeneratingAll && (
+            <div className="bg-muted rounded-xl p-4 space-y-2">
+              <div className="h-2 bg-background rounded-full overflow-hidden">
+                <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: "60%" }} />
+              </div>
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Auto-assigning faculty & running solver for each semester... This may take several minutes.
+              </p>
+            </div>
+          )}
+
+          {generateAllResults && (
+            <div className="bg-card rounded-lg shadow-sm p-5 space-y-3">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Layers className="h-4 w-4 text-primary" />
+                Generation Results — {generateAllResults.filter(r => r.status === "FEASIBLE" || r.status === "OPTIMAL").length}/{generateAllResults.length} succeeded
+              </h3>
+              <div className="space-y-2">
+                {generateAllResults.map((r) => {
+                  const ok = r.status === "FEASIBLE" || r.status === "OPTIMAL";
+                  return (
+                    <div key={r.semester} className={`flex items-center justify-between p-3 rounded-lg text-sm ${ok ? "bg-green-50 dark:bg-green-950/30" : "bg-red-50 dark:bg-red-950/30"}`}>
+                      <span className="font-medium">
+                        {ok ? "✅" : "❌"} Semester {r.semester}
+                      </span>
+                      {ok ? (
+                        <span className="text-muted-foreground text-xs">
+                          Score: {r.score}% · {r.entry_count} entries · {r.wall_time}s
+                        </span>
+                      ) : (
+                        <span className="text-red-600 dark:text-red-400 text-xs">{r.error || r.status}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl"
+                onClick={() => navigate("/timetable/list")}
+              >
+                View All Timetables
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

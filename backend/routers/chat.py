@@ -6,7 +6,8 @@ from schemas.chat import ChatRequest, ChatResponse
 from core.chatbot.intent import classify_intent
 from core.chatbot.handlers import (
     handle_query, handle_absence, handle_explain, handle_smalltalk,
-    handle_generate, handle_publish, handle_export, handle_reschedule,
+    handle_generate, handle_generate_all, handle_publish, handle_export,
+    handle_reschedule,
 )
 from core.chatbot.generation_advisor import (
     pre_generation_analysis, post_generation_analysis, ai_suggest_assignments,
@@ -29,7 +30,15 @@ async def chat_message(
     confidence = result.get("confidence", 0.0)
     entities = result.get("entities", {})
 
-    if intent == "GENERATE":
+    if intent == "GENERATE_ALL":
+        gen_result = await handle_generate_all(body.message, entities, db, college_id, dept_id)
+        return ChatResponse(
+            reply=gen_result["reply"],
+            intent=intent,
+            confidence=confidence,
+            data=gen_result.get("data"),
+        )
+    elif intent == "GENERATE":
         gen_result = await handle_generate(body.message, entities, db, college_id, dept_id)
         return ChatResponse(
             reply=gen_result["reply"],
