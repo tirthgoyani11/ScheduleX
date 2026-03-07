@@ -18,7 +18,7 @@ import {
 } from "@/lib/export-utils";
 
 const exportOptions = [
-  { icon: FileText, title: "Department PDF", description: "Full timetable grid, color coded, A4 landscape", format: "pdf" },
+  { icon: FileText, title: "Timetable PDF", description: "Full timetable grid, color coded, A4 landscape", format: "pdf" },
   { icon: Table2, title: "Excel Workbook", description: "4 sheets: Grid + Faculty + Room + Summary", format: "xlsx" },
   { icon: User, title: "Faculty Schedule", description: "All faculty schedules, one per page", format: "faculty-pdf" },
   { icon: Building2, title: "Room Allocation", description: "Room-wise timetable view PDF", format: "room-pdf" },

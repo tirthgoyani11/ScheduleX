@@ -278,15 +278,6 @@ async def export_department_pdf(
 
     semester_label = "EVEN" if tt.semester % 2 == 0 else "ODD"
 
-    # ── Compute fixed row height for single-page layout ──
-    # A4 landscape content: 200mm height
-    # Reserve: header(11) + info(5) + thead(5) + subjects(15) + faculty(8) + footer(7) + brand(3) = 54mm
-    # Break rows are fixed at 4mm each, subtract those from available space
-    num_breaks = sum(1 for s in slots if s.slot_type.value == "break")
-    num_data_rows = len(slots) - num_breaks
-    available = 200 - 54 - (num_breaks * 4)
-    row_height = min(13, max(6, round(available / max(num_data_rows, 1), 1)))
-
     template = _jinja_env.get_template("department.html")
     html_str = template.render(
         college_name=college_name,
@@ -306,7 +297,6 @@ async def export_department_pdf(
         total_day_cols=total_day_cols,
         subject_details=subject_details,
         faculty_legend=faculty_legend,
-        row_height=row_height,
     )
 
     pdf_bytes = _render_pdf(html_str)
@@ -333,12 +323,29 @@ def _build_faculty_schedule(faculty_name: str, all_entries, slots, days):
 
     rows = []
     for slot in slots:
+        if slot.slot_type.value != "break":
+            all_skip = all(
+                blocks.get(f"{d}|{slot.slot_order}", {}).get("type") == "skip"
+                or (
+                    blocks.get(f"{d}|{slot.slot_order}", {}).get("type") != "start"
+                    and f"{d}|{slot.slot_order}" not in lookup
+                )
+                for d in days
+            )
+            if all_skip:
+                continue
+
         time_label = f"{slot.start_time} – {slot.end_time}"
-        is_break = slot.slot_type.value == "break"
+        if slot.slot_type.value != "break":
+            for day in days:
+                info = blocks.get(f"{day}|{slot.slot_order}")
+                if info and info["type"] == "start":
+                    time_label = f"{slot.start_time} – {info['end_time']}"
+                    break
 
         cells = []
         for day in days:
-            if is_break:
+            if slot.slot_type.value == "break":
                 cells.append({"type": "break", "label": slot.label})
                 continue
 
@@ -362,7 +369,7 @@ def _build_faculty_schedule(faculty_name: str, all_entries, slots, days):
             else:
                 cells.append({"type": "empty"})
 
-        rows.append({"time": time_label, "cells": cells, "is_break": is_break})
+        rows.append({"time": time_label, "cells": cells})
 
     subject_map: dict[str, dict] = {}
     for e in entries:
@@ -399,13 +406,6 @@ async def export_faculty_pdf(
     )
     days = _get_days(all_entries)
 
-    # ── Compute row_height for single-page layout ──
-    # Reserved: header(12) + meta(5) + thead(5) + summary(12) + footer(5) = 39mm
-    num_breaks = sum(1 for s in slots if s.slot_type.value == "break")
-    num_data_rows = len(slots) - num_breaks
-    fac_available = 200 - 39 - (num_breaks * 4)
-    fac_row_height = min(13, max(6, round(fac_available / max(num_data_rows, 1), 1)))
-
     if faculty_name:
         # ── Single faculty ──
         entries, rows, teaching_summary, subject_map = _build_faculty_schedule(
@@ -424,7 +424,6 @@ async def export_faculty_pdf(
             days=days,
             rows=rows,
             teaching_summary=teaching_summary,
-            row_height=fac_row_height,
         )
         safe_name = faculty_name.replace(" ", "_")
         filename = f"Schedule_{safe_name}.pdf"
@@ -452,7 +451,6 @@ async def export_faculty_pdf(
             total_entries=len(all_entries),
             days=days,
             faculty_list=faculty_list,
-            row_height=fac_row_height,
         )
         filename = f"Faculty_Schedules_Sem{tt.semester}_{tt.academic_year}.pdf"
 
@@ -492,12 +490,29 @@ async def export_room_pdf(
 
         rows = []
         for slot in slots:
+            if slot.slot_type.value != "break":
+                all_skip = all(
+                    blocks.get(f"{d}|{slot.slot_order}", {}).get("type") == "skip"
+                    or (
+                        blocks.get(f"{d}|{slot.slot_order}", {}).get("type") != "start"
+                        and f"{d}|{slot.slot_order}" not in lookup
+                    )
+                    for d in days
+                )
+                if all_skip:
+                    continue
+
             time_label = f"{slot.start_time} – {slot.end_time}"
-            is_break = slot.slot_type.value == "break"
+            if slot.slot_type.value != "break":
+                for day in days:
+                    info = blocks.get(f"{day}|{slot.slot_order}")
+                    if info and info["type"] == "start":
+                        time_label = f"{slot.start_time} – {info['end_time']}"
+                        break
 
             cells = []
             for day in days:
-                if is_break:
+                if slot.slot_type.value == "break":
                     cells.append({"type": "break", "label": slot.label})
                     continue
 
@@ -521,7 +536,7 @@ async def export_room_pdf(
                 else:
                     cells.append({"type": "empty"})
 
-            rows.append({"time": time_label, "cells": cells, "is_break": is_break})
+            rows.append({"time": time_label, "cells": cells})
 
         used_slots = len(room_entries)
         utilization = round((used_slots / total_possible) * 100) if total_possible > 0 else 0
@@ -533,13 +548,6 @@ async def export_room_pdf(
             "utilization": utilization,
         })
 
-    # ── Compute row_height for single-page layout ──
-    # Reserved: header(12) + meta(5) + thead(5) + footer(5) = 27mm
-    num_breaks = sum(1 for s in slots if s.slot_type.value == "break")
-    num_data_rows = len(slots) - num_breaks
-    room_available = 200 - 27 - (num_breaks * 4)
-    room_row_height = min(13, max(6, round(room_available / max(num_data_rows, 1), 1)))
-
     template = _jinja_env.get_template("room.html")
     html_str = template.render(
         semester=tt.semester,
@@ -548,7 +556,6 @@ async def export_room_pdf(
         total_entries=len(all_entries),
         days=days,
         rooms=rooms_data,
-        row_height=room_row_height,
     )
 
     pdf_bytes = _render_pdf(html_str)

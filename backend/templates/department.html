@@ -3,48 +3,51 @@
 <head>
 <meta charset="utf-8">
 <style>
-  /* ── FIXED SINGLE-PAGE A4 LANDSCAPE LAYOUT ──
-     Page = 297mm × 210mm, margins 5mm → content = 287mm × 200mm.
-     Every section has a fixed height. Content clips if it overflows. */
-
   @page {
     size: A4 landscape;
-    margin: 5mm;
+    margin: 6mm 5mm 6mm 5mm;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 7pt;
+    font-size: 7.5pt;
     color: #000;
-    width: 287mm;
-    height: 200mm;
-    overflow: hidden;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* ── Header — 11mm ── */
+  /* ── Header ── */
   .header {
     text-align: center;
-    height: 11mm;
-    overflow: hidden;
+    padding: 2mm 0 1mm;
   }
-  .header h1 { font-size: 11pt; font-weight: 700; margin-bottom: 0.3mm; }
-  .header .subtitle { font-size: 8pt; font-weight: 700; margin-bottom: 0.3mm; }
-  .header .program { font-size: 7.5pt; font-weight: 700; }
+  .header h1 {
+    font-size: 12pt;
+    font-weight: 700;
+    margin-bottom: 0.5mm;
+  }
+  .header .subtitle {
+    font-size: 9pt;
+    font-weight: 700;
+    margin-bottom: 0.5mm;
+  }
+  .header .program {
+    font-size: 8.5pt;
+    font-weight: 700;
+  }
 
-  /* ── Info Bar — 5mm ── */
+  /* ── Info Bar ── */
   .info-bar {
     width: 100%;
     border-collapse: collapse;
-    height: 5mm;
+    margin-bottom: 0;
   }
   .info-bar td {
     border: 1px solid #000;
-    padding: 0.5mm 2mm;
-    font-size: 6.5pt;
+    padding: 1mm 2mm;
+    font-size: 7pt;
     font-weight: 600;
   }
 
@@ -53,94 +56,99 @@
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
+    margin-bottom: 1.5mm;
   }
 
   .timetable th,
   .timetable td {
     border: 1px solid #000;
-    padding: 0;
+    padding: 0.8mm 0.5mm;
     text-align: center;
-    vertical-align: top;
-    font-size: 5.5pt;
-    line-height: 1.15;
+    vertical-align: middle;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    font-size: 6.5pt;
+    line-height: 1.3;
   }
 
+  /* Day header */
   .timetable thead th {
     font-weight: 700;
-    font-size: 6.5pt;
+    font-size: 7pt;
     background: #fff;
-    padding: 0.5mm 0.3mm;
-    height: 5mm;
-    vertical-align: middle;
+    padding: 1mm 0.5mm;
   }
 
+  /* Batch sub-header */
+  .timetable thead tr.batch-row th {
+    font-size: 5.5pt;
+    font-weight: 700;
+    padding: 0.5mm;
+  }
+
+  /* Time column */
   .time-col {
     font-weight: 700;
-    font-size: 5pt;
+    font-size: 5.5pt;
+    white-space: normal;
     background: #fff;
-    width: 12mm;
-    vertical-align: middle;
-    text-align: center;
+    width: 14mm;
+    line-height: 1.3;
   }
 
-  /* Inner div clips content to exact row height */
-  .cell-inner {
-    height: {{ row_height }}mm;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 0.2mm;
+  /* Uniform row height */
+  .timetable tbody tr {
+    height: 14mm;
   }
 
-  /* Break rows — smaller height */
-  .break-inner {
-    height: 4mm;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  /* Lab cell — YELLOW background */
+  .lab-cell {
+    background: #ffff00 !important;
+    font-size: 6pt;
+    line-height: 1.25;
+    font-weight: 700;
   }
+
+  /* Theory cell — light blue background */
+  .theory-cell {
+    background: #d6eaf8 !important;
+    font-size: 6.5pt;
+    line-height: 1.3;
+  }
+  .theory-cell .code {
+    font-weight: 700;
+    font-size: 6.5pt;
+  }
+
+  /* Break row */
   .break-cell {
     background: #fff;
     font-weight: 700;
-    font-size: 7pt;
+    font-size: 8pt;
     letter-spacing: 1px;
+    padding: 1.5mm 0;
   }
 
-  /* Lab cell — YELLOW */
-  .lab-cell .cell-inner {
-    background: #ffff00;
-    font-size: 5pt;
-    font-weight: 700;
-    line-height: 1.1;
+  /* Empty */
+  .empty-cell {
+    background: #fff !important;
+    color: #aaa;
   }
 
-  /* Theory cell — light blue */
-  .theory-cell .cell-inner {
-    background: #d6eaf8;
-    font-size: 5.5pt;
-    line-height: 1.15;
-  }
-  .theory-cell .code { font-weight: 700; }
-
-  .empty-cell { background: #fff !important; color: #aaa; }
-
-  /* ── Subject Details — compact ── */
+  /* ── Subject Details (two-column) ── */
   .subject-outer {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 0.5mm;
+    margin-bottom: 1.5mm;
   }
   .subject-outer > tbody > tr > td {
     width: 50%;
     vertical-align: top;
-    padding-right: 1mm;
+    padding-right: 2mm;
   }
   .subject-outer > tbody > tr > td:last-child {
     padding-right: 0;
-    padding-left: 1mm;
+    padding-left: 2mm;
   }
   .subject-table {
     width: 100%;
@@ -149,43 +157,44 @@
   .subject-table th,
   .subject-table td {
     border: 1px solid #000;
-    padding: 0.2mm 1mm;
-    font-size: 5pt;
+    padding: 0.6mm 1.5mm;
+    font-size: 6.5pt;
     text-align: center;
   }
-  .subject-table th { font-weight: 700; background: #fff; }
+  .subject-table th {
+    font-weight: 700;
+    background: #fff;
+  }
   .subject-table td.name-cell {
     text-align: left;
-    max-width: 50mm;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   /* ── Faculty Legend ── */
   .faculty-table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 0.3mm;
+    margin-bottom: 1.5mm;
   }
   .faculty-table td {
-    padding: 0.1mm 1.5mm;
-    font-size: 5pt;
+    padding: 0.4mm 2mm;
+    font-size: 6.5pt;
     vertical-align: top;
     width: 50%;
   }
-  .faculty-table td .abbr { font-weight: 700; }
+  .faculty-table td .abbr {
+    font-weight: 700;
+  }
 
   /* ── Footer ── */
   .footer-bar {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 1mm;
+    margin-top: 2mm;
   }
   .footer-bar td {
     border: 1px solid #000;
-    padding: 1mm 2mm;
-    font-size: 6pt;
+    padding: 1.5mm 3mm;
+    font-size: 7pt;
     font-weight: 600;
   }
 </style>
@@ -212,19 +221,19 @@
 <table class="timetable">
   <thead>
     <tr>
-      <th class="time-col" style="width:12mm">Time</th>
+      <th class="time-col" style="width:14mm">Time</th>
       {% for day in days %}
-        <th {% if batch_names %}colspan="{{ batch_names|length }}"{% endif %}>{{ day[:3]|upper }}</th>
+        <th {% if batch_names %}colspan="{{ batch_names|length }}"{% endif %}>{{ day|upper }}</th>
       {% endfor %}
     </tr>
   </thead>
   <tbody>
     {% for slot in slots %}
     <tr>
-      <td class="time-col"><div class="{% if slot.slot_type.value == 'break' %}break-inner{% else %}cell-inner{% endif %}">{{ slot.start_time }}-{{ slot.end_time }}</div></td>
+      <td class="time-col">{{ slot.start_time }}<br>to<br>{{ slot.end_time }}</td>
 
       {% if slot.slot_type.value == 'break' %}
-        <td class="break-cell" colspan="{{ total_day_cols }}"><div class="break-inner">{{ slot.label|upper }}</div></td>
+        <td class="break-cell" colspan="{{ total_day_cols }}">{{ slot.label|upper }}</td>
       {% else %}
         {% for day in days %}
           {% set key = day ~ '|' ~ slot.slot_order|string %}
@@ -239,61 +248,56 @@
             {% set cell_has_labs = batch_entries|length > 0 %}
 
             {% if batch_names and is_lab_period(slot.slot_order) and cell_has_labs %}
+              {# ── Lab sub-columns — YELLOW: batch, abbr: code, room, faculty ── #}
               {% for bn in batch_names %}
                 {% set entry = batch_entries|selectattr('batch', 'equalto', bn)|first %}
                 <td class="lab-cell"
                     {% if block and block.type == 'start' %}rowspan="{{ block.span }}"{% endif %}>
-                  <div class="cell-inner">
                   {% if entry %}
                     <div>{{ entry.batch }}</div>
-                    <div>{{ entry.subject_abbr }}</div>
+                    <div>{{ entry.subject_abbr }}{% if entry.subject_code %}: {{ entry.subject_code }}{% endif %}</div>
                     <div>{{ entry.room_name }}</div>
                     <div>{{ entry.faculty_abbr }}</div>
                   {% else %}
-                    &mdash;
+                    <span class="empty-cell">&mdash;</span>
                   {% endif %}
-                  </div>
                 </td>
               {% endfor %}
 
             {% elif batch_names %}
+              {# ── Theory spanning all batches — light blue ── #}
               {% if theory_entries %}
                 {% set e = theory_entries[0] %}
                 <td class="theory-cell" colspan="{{ batch_names|length }}">
-                  <div class="cell-inner">
-                    <div class="code">{{ e.subject_abbr }}{% if e.subject_code %}: {{ e.subject_code }}{% endif %}</div>
-                    <div>{{ e.room_name }}</div>
-                    <div>{{ e.faculty_abbr }}</div>
-                  </div>
+                  <div class="code">{{ e.subject_abbr }}{% if e.subject_code %}: {{ e.subject_code }}{% endif %}</div>
+                  <div>{{ e.room_name }}</div>
+                  <div>{{ e.faculty_abbr }}</div>
                 </td>
               {% elif entries %}
                 {% set e = entries[0] %}
                 <td class="theory-cell" colspan="{{ batch_names|length }}">
-                  <div class="cell-inner">
-                    <div class="code">{{ e.subject_abbr }}{% if e.subject_code %}: {{ e.subject_code }}{% endif %}</div>
-                    <div>{{ e.room_name }}</div>
-                    <div>{{ e.faculty_abbr }}</div>
-                  </div>
+                  <div class="code">{{ e.subject_abbr }}{% if e.subject_code %}: {{ e.subject_code }}{% endif %}</div>
+                  <div>{{ e.room_name }}</div>
+                  <div>{{ e.faculty_abbr }}</div>
                 </td>
               {% else %}
                 <td colspan="{{ batch_names|length }}">
-                  <div class="cell-inner empty-cell">&mdash;</div>
+                  <span class="empty-cell">&mdash;</span>
                 </td>
               {% endif %}
 
             {% else %}
+              {# ── No batches ── #}
               {% if entries %}
                 {% set e = entries[0] %}
                 <td class="theory-cell">
-                  <div class="cell-inner">
-                    <div class="code">{{ e.subject_abbr }}{% if e.subject_code %}: {{ e.subject_code }}{% endif %}</div>
-                    <div>{{ e.room_name }}</div>
-                    <div>{{ e.faculty_abbr }}</div>
-                  </div>
+                  <div class="code">{{ e.subject_abbr }}{% if e.subject_code %}: {{ e.subject_code }}{% endif %}</div>
+                  <div>{{ e.room_name }}</div>
+                  <div>{{ e.faculty_abbr }}</div>
                 </td>
               {% else %}
                 <td>
-                  <div class="cell-inner empty-cell">&mdash;</div>
+                  <span class="empty-cell">&mdash;</span>
                 </td>
               {% endif %}
             {% endif %}
@@ -313,7 +317,7 @@
       <td>
         <table class="subject-table">
           <thead>
-            <tr><th>CODE</th><th>SUBJECT NAME</th><th>L</th><th>P</th><th>T</th><th>C</th></tr>
+            <tr><th>SUBJECT CODE</th><th>NAME OF SUBJECT</th><th>L</th><th>P</th><th>T</th><th>C</th></tr>
           </thead>
           <tbody>
             {% set mid = ((subject_details|length) + 1) // 2 %}
@@ -333,7 +337,7 @@
       <td>
         <table class="subject-table">
           <thead>
-            <tr><th>CODE</th><th>SUBJECT NAME</th><th>L</th><th>P</th><th>T</th><th>C</th></tr>
+            <tr><th>SUBJECT CODE</th><th>NAME OF SUBJECT</th><th>L</th><th>P</th><th>T</th><th>C</th></tr>
           </thead>
           <tbody>
             {% for s in subject_details[mid:] %}
@@ -376,13 +380,13 @@
 {# ── Footer ── #}
 <table class="footer-bar">
   <tr>
-    <td>Prepared by: _______________</td>
-    <td>Verified by HOD: _______________</td>
-    <td>Principal/Director: _______________</td>
+    <td>Prepared by: ___________________</td>
+    <td>Verified by HOD: ___________________</td>
+    <td>Principal/Director: ___________________</td>
   </tr>
 </table>
 
-<div style="text-align:center; font-size:5pt; color:#999; margin-top:1mm;">Created using ScheduleX</div>
+<div style="text-align:center; font-size:5.5pt; color:#999; margin-top:2mm;">Created using ScheduleX</div>
 
 </body>
 </html>
