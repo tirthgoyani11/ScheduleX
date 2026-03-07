@@ -17,6 +17,8 @@ Flow:
 from ortools.sat.python import cp_model
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import asyncio
+import os
 import uuid
 import structlog
 
@@ -90,10 +92,17 @@ async def generate_timetable(
     # ── 5. Solve ──────────────────────────────────────────────────────────────
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = config.get("time_limit_seconds", 120)
-    solver.parameters.num_workers = 4
+    solver.parameters.num_workers = os.cpu_count() or 8
     solver.parameters.log_search_progress = False
+    # Performance tuning
+    solver.parameters.linearization_level = 2
+    solver.parameters.cp_model_presolve = True
+    # Fast mode: stop after first feasible solution (used by generate-all)
+    if config.get("fast_mode", False):
+        solver.parameters.stop_after_first_solution = True
 
-    status_code = solver.Solve(model)
+    # Run CPU-bound solver in a thread to not block the async event loop
+    status_code = await asyncio.to_thread(solver.Solve, model)
     status_str = solver.StatusName(status_code)
 
     log.info(

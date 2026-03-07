@@ -385,6 +385,7 @@ async def handle_smalltalk(user_msg: str) -> str:
 async def handle_generate(
     user_msg: str, entities: dict, db: AsyncSession,
     college_id: str, dept_id: str,
+    fast_mode: bool = False,
 ) -> dict:
     """
     Handle timetable generation via chat.
@@ -537,10 +538,13 @@ async def handle_generate(
     for sid, fid in sid_to_fid.items():
         faculty_subject_map.setdefault(fid, []).append(sid)
 
-    # Step 2: AI pre-generation analysis + auto-fix
-    pre_analysis = await pre_generation_analysis(
-        semester, faculty_subject_map, db, dept_id, college_id,
-    )
+    # Step 2: AI pre-generation analysis + auto-fix (skip in fast_mode)
+    if not fast_mode:
+        pre_analysis = await pre_generation_analysis(
+            semester, faculty_subject_map, db, dept_id, college_id,
+        )
+    else:
+        pre_analysis = {"ok": True, "analysis": ""}
 
     auto_fixes: list[str] = []
     if not pre_analysis["ok"]:
@@ -634,7 +638,7 @@ async def handle_generate(
     from models.room import RoomType
     from models.batch import Batch as BatchModel
 
-    max_solver_attempts = 4
+    max_solver_attempts = 2 if fast_mode else 4
     last_result = None
     last_diagnosis = None
 
@@ -681,7 +685,8 @@ async def handle_generate(
             db=db,
             config={
                 "faculty_subject_map": faculty_subject_map,
-                "time_limit_seconds": 120,
+                "time_limit_seconds": 60 if fast_mode else 120,
+                "fast_mode": fast_mode,
             },
         )
         last_result = result
@@ -721,8 +726,11 @@ async def handle_generate(
     solver_status = result.get("status", "UNKNOWN")
 
     if solver_status in ("OPTIMAL", "FEASIBLE"):
-        # AI post-generation analysis
-        post_analysis = await post_generation_analysis(timetable.timetable_id, db)
+        # AI post-generation analysis (skip in fast_mode)
+        if not fast_mode:
+            post_analysis = await post_generation_analysis(timetable.timetable_id, db)
+        else:
+            post_analysis = {"ai_summary": "Fast mode — analysis skipped."}
 
         # Auto-publish for seamless workflow
         timetable.status = TimetableStatus.PUBLISHED
@@ -764,15 +772,18 @@ async def handle_generate(
         diagnosis = result.get("diagnosis") or last_diagnosis or {}
         diag_msg = diagnosis.get("message", "Unknown issue")
 
-        ai_explain = await llm.chat(
-            f"Timetable generation failed for semester {semester}.\n"
-            f"Status: {solver_status}\nDiagnosis: {diag_msg}\n"
-            f"Pre-analysis: {pre_analysis.get('ai_summary', '')}",
-            system=(
-                "You are TimetableAI. The timetable solver failed. Explain why in simple terms "
-                "and suggest 2-3 concrete fixes. Be helpful and encouraging."
-            ),
-        )
+        if not fast_mode:
+            ai_explain = await llm.chat(
+                f"Timetable generation failed for semester {semester}.\n"
+                f"Status: {solver_status}\nDiagnosis: {diag_msg}\n"
+                f"Pre-analysis: {pre_analysis.get('ai_summary', '')}",
+                system=(
+                    "You are TimetableAI. The timetable solver failed. Explain why in simple terms "
+                    "and suggest 2-3 concrete fixes. Be helpful and encouraging."
+                ),
+            )
+        else:
+            ai_explain = diag_msg
 
         return {
             "reply": (

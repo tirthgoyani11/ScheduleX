@@ -322,6 +322,7 @@ async def generate_all_semesters(
                 db=db,
                 college_id=current_user.college_id,
                 dept_id=current_user.dept_id,
+                fast_mode=True,
             )
             data = gen_result.get("data") or {}
             status = data.get("status", "UNKNOWN")
