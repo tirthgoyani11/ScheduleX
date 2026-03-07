@@ -41,7 +41,7 @@ try:
     )
 except ImportError:
     import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
     from pdf_parser import (
         parse_departments,
         parse_faculty,
