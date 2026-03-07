@@ -446,6 +446,16 @@ async def handle_generate(
     )
     num_batches = len(batch_result.scalars().all()) or 1
 
+    # Load existing bookings to calculate remaining capacity
+    from models.global_booking import GlobalBooking
+    booking_result = await db.execute(
+        select(GlobalBooking.faculty_id)
+        .where(GlobalBooking.college_id == college_id)
+    )
+    existing_booking_counts: dict[str, int] = {}
+    for (fid_b,) in booking_result.all():
+        existing_booking_counts[fid_b] = existing_booking_counts.get(fid_b, 0) + 1
+
     subject_keywords: dict[str, list[str]] = {}
     for sub in subject_list:
         subject_keywords[sub.subject_id] = [
@@ -467,7 +477,10 @@ async def handle_generate(
         "coa": ["computer organization", "computer architecture"],
     }
 
-    load_tracker: dict[str, int] = {f.faculty_id: 0 for f in faculty_list}
+    load_tracker: dict[str, int] = {
+        f.faculty_id: existing_booking_counts.get(f.faculty_id, 0)
+        for f in faculty_list
+    }
     sid_to_fid: dict[str, str] = {}
 
     def _match_score(fac, sub):
@@ -491,8 +504,12 @@ async def handle_generate(
         return lh + s.lab_hours * num_batches
 
     for sub in sorted(subject_list, key=_sub_load, reverse=True):
+        needed = _sub_load(sub)
         candidates = []
         for fac in faculty_list:
+            remaining = fac.max_weekly_load - load_tracker[fac.faculty_id]
+            if remaining < needed:
+                continue
             sc = _match_score(fac, sub)
             if sc > 0:
                 candidates.append((sc - load_tracker[fac.faculty_id] * 5, fac))
@@ -500,11 +517,20 @@ async def handle_generate(
             candidates.sort(key=lambda x: (-x[0], load_tracker[x[1].faculty_id]))
             best = candidates[0][1]
             sid_to_fid[sub.subject_id] = best.faculty_id
-            load_tracker[best.faculty_id] += _sub_load(sub)
-        elif faculty_list:
-            least = min(faculty_list, key=lambda f: load_tracker[f.faculty_id])
-            sid_to_fid[sub.subject_id] = least.faculty_id
-            load_tracker[least.faculty_id] += _sub_load(sub)
+            load_tracker[best.faculty_id] += needed
+        else:
+            # Fallback: pick faculty with most remaining capacity
+            available = [(fac.max_weekly_load - load_tracker[fac.faculty_id], fac)
+                         for fac in faculty_list
+                         if fac.max_weekly_load - load_tracker[fac.faculty_id] >= needed]
+            if available:
+                available.sort(key=lambda x: -x[0])
+                best = available[0][1]
+            else:
+                # Last resort: least loaded faculty
+                best = min(faculty_list, key=lambda f: load_tracker[f.faculty_id])
+            sid_to_fid[sub.subject_id] = best.faculty_id
+            load_tracker[best.faculty_id] += needed
 
     # Convert to {faculty_id: [subject_ids]}
     faculty_subject_map: dict[str, list[str]] = {}

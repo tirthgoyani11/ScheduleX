@@ -64,12 +64,17 @@ def apply_hard_constraints(model: cp_model.CpModel, variables: dict, data: dict)
             model.AddAtMostOne(slot_vars)
             constraint_count += 1
 
-    # ── HC4: Faculty weekly load cap ──────────────────────────────────────────
+    # ── HC4: Faculty weekly load cap (subtract existing cross-semester bookings) ─
+    existing_bookings = data.get("existing_bookings", [])
     for faculty in data["faculty"]:
         fid = faculty.faculty_id
         entries = by_faculty.get(fid, [])
         if entries:
-            model.Add(sum(v for _, v in entries) <= faculty.max_weekly_load)
+            already_booked = sum(1 for b in existing_bookings if b.faculty_id == fid)
+            remaining = faculty.max_weekly_load - already_booked
+            if remaining < 0:
+                remaining = 0
+            model.Add(sum(v for _, v in entries) <= remaining)
             constraint_count += 1
 
     # ── HC7t: Theory — each (subject, faculty) assigned exactly lecture_hours ─
