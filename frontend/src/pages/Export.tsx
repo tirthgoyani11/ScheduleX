@@ -3,11 +3,14 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
 import { useTimetable } from "@/hooks/useTimetable";
 import { useFaculty } from "@/hooks/useFaculty";
 import { useTimeSlots } from "@/hooks/useTimeSlots";
 import { useState } from "react";
 import { toast } from "sonner";
+import type { Timetable } from "@/types";
 import {
   exportDepartmentPDF,
   exportExcelWorkbook,
@@ -31,9 +34,11 @@ export default function ExportPage() {
   const [exporting, setExporting] = useState<string | null>(null);
 
   // Fetch the full timetable (with entries) for the selected ID
-  const { timetable: selectedTT, timetableLoading } = useTimetable(
-    selectedTimetableId || undefined
-  );
+  const { data: selectedTT = null, isLoading: timetableLoading } = useQuery<Timetable>({
+    queryKey: ["timetable", selectedTimetableId],
+    queryFn: () => api.get(`/timetable/${selectedTimetableId}`),
+    enabled: !!selectedTimetableId,
+  });
 
   const handleExport = async (format: string) => {
     if (!selectedTT) {
